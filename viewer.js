@@ -4,9 +4,9 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
 const SPECS = {
-  both: { label: "Both garments", parts: "13 parts", quads: "18,704", verts: "18,746" },
-  tshirt: { label: "Crewneck T-Shirt", parts: "3 parts", quads: "7,144", verts: "7,140" },
-  hoodie: { label: "Pullover Hoodie", parts: "10 parts", quads: "11,560", verts: "11,606" },
+  both: { label: "Both garments", parts: "—", tris: "—", verts: "—" },
+  tshirt: { label: "Crewneck T-Shirt", parts: "—", tris: "—", verts: "—" },
+  hoodie: { label: "Pullover Hoodie", parts: "—", tris: "—", verts: "—" },
 };
 
 const CAMERA_PRESETS = {
@@ -90,6 +90,7 @@ scene.add(rootGroup);
 
 let tshirtNodes = [];
 let hoodieNodes = [];
+const originalPosX = new Map();
 const originalMaterials = new Map();
 const clayMaterial = new THREE.MeshStandardMaterial({
   color: 0xd9d6ce,
@@ -179,22 +180,51 @@ function applyShading() {
   }
 }
 
-function applyGarmentSelection() {
+function centerOffsetFor(nodes) {
+  const box = new THREE.Box3();
+  for (const n of nodes) {
+    box.expandByObject(n);
+  }
+  if (box.isEmpty()) return 0;
+  return -box.getCenter(new THREE.Vector3()).x;
+}
+
+function applyGarmentSelection(immediate = false) {
   for (const n of tshirtNodes) {
     n.visible = state.garment !== "hoodie";
-    n.position.x = state.garment === "tshirt" ? 0.56 : 0;
+    n.position.x = originalPosX.get(n) ?? 0;
   }
   for (const n of hoodieNodes) {
     n.visible = state.garment !== "tshirt";
-    n.position.x = state.garment === "hoodie" ? -0.56 : 0;
+    n.position.x = originalPosX.get(n) ?? 0;
+  }
+
+  if (state.garment === "tshirt") {
+    const dx = centerOffsetFor(tshirtNodes);
+    for (const n of tshirtNodes) n.position.x += dx;
+  } else if (state.garment === "hoodie") {
+    const dx = centerOffsetFor(hoodieNodes);
+    for (const n of hoodieNodes) n.position.x += dx;
   }
 
   const info = SPECS[state.garment];
   activeModelLabel.textContent = info.label;
   specParts.textContent = info.parts;
-  specQuads.textContent = info.quads;
+  specQuads.textContent = info.tris;
   specVerts.textContent = info.verts;
-  setCameraTarget(state.camera, false);
+  setCameraTarget(state.camera, immediate);
+}
+
+function computeStats(nodes) {
+  let tris = 0;
+  let verts = 0;
+  for (const obj of nodes) {
+    const g = obj.geometry;
+    if (!g) continue;
+    verts += g.attributes.position ? g.attributes.position.count : 0;
+    tris += g.index ? Math.round(g.index.count / 3) : Math.round((g.attributes.position?.count || 0) / 3);
+  }
+  return { parts: `${nodes.length} parts`, tris: tris.toLocaleString("en-US"), verts: verts.toLocaleString("en-US") };
 }
 
 const loader = new GLTFLoader();
@@ -208,6 +238,7 @@ loader.load(
       if (!obj.isMesh) return;
       obj.castShadow = true;
       obj.receiveShadow = true;
+      originalPosX.set(obj, obj.position.x);
       if (obj.material) {
         obj.material.roughness = Math.max(obj.material.roughness ?? 0.85, 0.72);
         originalMaterials.set(obj, obj.material);
@@ -219,10 +250,13 @@ loader.load(
       }
     });
 
+    SPECS.tshirt = { label: "Crewneck T-Shirt", ...computeStats(tshirtNodes) };
+    SPECS.hoodie = { label: "Pullover Hoodie", ...computeStats(hoodieNodes) };
+    SPECS.both = { label: "Both garments", ...computeStats([...tshirtNodes, ...hoodieNodes]) };
+
     applyColors();
     applyShading();
-    applyGarmentSelection();
-    setCameraTarget("three-quarter", true);
+    applyGarmentSelection(true);
 
     host.setAttribute("aria-busy", "false");
     loadingOverlay.classList.add("is-hidden");

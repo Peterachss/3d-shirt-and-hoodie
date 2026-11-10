@@ -545,8 +545,8 @@ def build_ribbed_band_from_loop(
     return SubMesh("ribbed_band", v_thick, q_thick, np.zeros((0, 3), dtype=np.int32), uv_thick, "rib_knit")
 
 
-def build_tshirt() -> Tuple[List[SubMesh], Dict[str, MaterialDef]]:
-    spec = GarmentSpec(
+def get_tshirt_spec() -> GarmentSpec:
+    return GarmentSpec(
         hem_y=0.015,
         waist_y=0.25,
         arm_bot_y=0.435,
@@ -574,6 +574,41 @@ def build_tshirt() -> Tuple[List[SubMesh], Dict[str, MaterialDef]]:
         is_hoodie=False,
         thickness=0.0026,
     )
+
+
+def get_hoodie_spec() -> GarmentSpec:
+    return GarmentSpec(
+        hem_y=0.068,
+        waist_y=0.23,
+        arm_bot_y=0.415,
+        chest_y=0.46,
+        arm_top_y=0.628,
+        neck_front_y=0.648,
+        neck_back_y=0.706,
+        neck_side_y=0.718,
+        rx_hem=0.278,
+        rx_waist=0.285,
+        rx_chest=0.298,
+        rx_shoulder=0.292,
+        rz_hem=0.144,
+        rz_waist=0.148,
+        rz_chest=0.156,
+        neck_rx=0.105,
+        neck_rz_front=0.095,
+        neck_rz_back=0.082,
+        sleeve_len=0.535,
+        sleeve_drop_deg=55.0,
+        sleeve_fwd_deg=9.0,
+        sleeve_end_rx=0.068,
+        sleeve_end_rz=0.064,
+        elbow_bend=0.022,
+        is_hoodie=True,
+        thickness=0.0038,
+    )
+
+
+def build_tshirt() -> Tuple[List[SubMesh], Dict[str, MaterialDef]]:
+    spec = get_tshirt_spec()
 
     verts, quads, uvs, hem_loop, neck_loop, cuff_l, cuff_r, _, _ = build_torso_and_sleeves(spec)
     v_thick, q_thick, uv_thick = thicken_shell(
@@ -610,12 +645,10 @@ def build_tshirt() -> Tuple[List[SubMesh], Dict[str, MaterialDef]]:
     return [body_mesh, collar_mesh, hem_mesh], materials
 
 
-def build_hoodie_hood(spec: GarmentSpec) -> SubMesh:
+def build_hoodie_hood_pattern(spec: GarmentSpec) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[int], List[int]]:
     """
-    Build a rounded pullover hood where:
-      - u in [0, 1] spans around the hood from right-throat (0) -> back/crown (0.5) -> left-throat (1)
-      - v in [0, 1] sweeps from the neck collar base (v=0) up over the back/crown to the face opening arch (v=1)
-    This creates a closed, smoothly domed hood top with an oval face opening!
+    Build the open single-layer quad hood pattern plus neck-base and face-brim vertex lists
+    so Blender Cloth Physics can drape it naturally before Solidify.
     """
     N_U = 33
     N_V = 18
@@ -626,30 +659,23 @@ def build_hoodie_hood(spec: GarmentSpec) -> SubMesh:
         ring = np.zeros((N_U, 3), dtype=np.float64)
 
         for i in range(N_U):
-            u = i / (N_U - 1)           # 0 .. 1
-            s = (u - 0.5) * 2.0         # -1 (-X throat) .. 0 (center) .. +1 (+X throat)
+            u = i / (N_U - 1)
+            s = (u - 0.5) * 2.0
             abs_s = abs(s)
             sign_s = 1.0 if s >= 0 else -1.0
 
-            # --- Curve A (v=0): Neck collar loop (overlaps cleanly onto body collar) ---
-            ang_neck = (1.0 - abs_s) * math.pi  # 0 at front throat, pi at back center
+            ang_neck = (1.0 - abs_s) * math.pi
             x_neck = sign_s * (0.024 * (abs_s ** 2) + (spec.neck_rx + 0.008) * math.sin(ang_neck))
             z_neck = 0.098 * math.cos(ang_neck)
             if z_neck < 0:
                 z_neck *= (spec.neck_rz_back + 0.006) / 0.098
             y_neck = (spec.neck_back_y - 0.014) + 0.016 * math.sin(ang_neck) - 0.042 * (abs_s ** 3.2)
 
-            # --- Curve B (v=1): Rounded oval face opening loop ---
-            # At throat (abs_s=1): x=+-0.024, y=0.685, z=+0.114
-            # At temple (abs_s=0.5): x=+-0.112, y=0.835, z=+0.105
-            # At crown forehead (abs_s=0): x=0, y=0.955, z=+0.105
-            ang_face = abs_s * math.pi  # 0 at forehead crown, pi at throat
+            ang_face = abs_s * math.pi
             x_face = sign_s * (0.112 * math.sin(ang_face * 0.92) + 0.024 * (abs_s ** 4))
             y_face = 0.820 + 0.135 * math.cos(ang_face)
             z_face = 0.108 + 0.008 * math.sin(ang_face)
 
-            # --- Smooth dome loft between Neck (v=0) and Face Opening (v=1) ---
-            # Sweep backward into head depth around v = 0.45..0.60
             back_dome = math.sin(v * math.pi) * math.cos(abs_s * math.pi * 0.5)
             side_dome = math.sin(v * math.pi) * math.sin(abs_s * math.pi)
 
@@ -657,15 +683,11 @@ def build_hoodie_hood(spec: GarmentSpec) -> SubMesh:
             y = y_neck * (1.0 - v) + y_face * v + 0.055 * back_dome
             z = z_neck * (1.0 - v) + z_face * v - 0.145 * back_dome
 
-            # Subtle relaxed slouch fold near back of neck
             z -= 0.009 * math.sin(v * math.pi * 2.5) * math.exp(-(abs_s ** 2) / 0.15) * (1.0 - v)
-
-            # Crisp top/back center seam ridge (abs_s near 0)
             seam = 0.0025 * math.exp(-(abs_s ** 2) / 0.003) * math.sin(v * math.pi)
             y += seam * 0.7
             z -= seam * 0.7
 
-            # Rolled hood brim thickening right along face rim (v > 0.88)
             if v > 0.88:
                 brim = (v - 0.88) / 0.12
                 z += 0.004 * brim
@@ -675,10 +697,6 @@ def build_hoodie_hood(spec: GarmentSpec) -> SubMesh:
         rings.append(ring)
 
     verts, quads, _, uvs = make_tube_mesh(rings, closed_u=False)
-
-    # Check normal orientation:
-    # At center back (i=N_U//2, j=N_V//2): i increases -X -> +X (+X), j increases back->front (+Y/+Z).
-    # (+X) x (+Y) = +Z (INWARD!). So flip quads so normals point OUTWARD (-Z at back, +Y at top)!
     quads = quads[:, ::-1]
 
     bot_loop = list(range(0, N_U))
@@ -686,7 +704,12 @@ def build_hoodie_hood(spec: GarmentSpec) -> SubMesh:
     top_loop = [(N_V - 1) * N_U + i for i in range(N_U - 2, -1, -1)]
     left_loop = [j * N_U + 0 for j in range(N_V - 2, 0, -1)]
     boundary = list(reversed(bot_loop + right_loop + top_loop + left_loop))
+    face_rim = [(N_V - 1) * N_U + i for i in range(N_U)]
+    return verts, quads, uvs, boundary, bot_loop + face_rim
 
+
+def build_hoodie_hood(spec: GarmentSpec) -> SubMesh:
+    verts, quads, uvs, boundary, _ = build_hoodie_hood_pattern(spec)
     v_thick, q_thick, uv_thick = thicken_shell(
         verts, quads, uvs, [boundary], thickness=0.0044, inset_normals=True
     )
@@ -804,34 +827,7 @@ def build_drawstring_and_aglet(side_sign: float, spec: GarmentSpec) -> List[SubM
 
 
 def build_hoodie() -> Tuple[List[SubMesh], Dict[str, MaterialDef]]:
-    spec = GarmentSpec(
-        hem_y=0.068,
-        waist_y=0.23,
-        arm_bot_y=0.415,
-        chest_y=0.46,
-        arm_top_y=0.628,
-        neck_front_y=0.648,
-        neck_back_y=0.706,
-        neck_side_y=0.718,
-        rx_hem=0.278,
-        rx_waist=0.285,
-        rx_chest=0.298,
-        rx_shoulder=0.292,
-        rz_hem=0.144,
-        rz_waist=0.148,
-        rz_chest=0.156,
-        neck_rx=0.105,
-        neck_rz_front=0.095,
-        neck_rz_back=0.082,
-        sleeve_len=0.535,
-        sleeve_drop_deg=55.0,
-        sleeve_fwd_deg=9.0,
-        sleeve_end_rx=0.068,
-        sleeve_end_rz=0.064,
-        elbow_bend=0.022,
-        is_hoodie=True,
-        thickness=0.0038,
-    )
+    spec = get_hoodie_spec()
 
     verts, quads, uvs, hem_loop, neck_loop, cuff_l, cuff_r, dir_l, dir_r = build_torso_and_sleeves(spec)
 
