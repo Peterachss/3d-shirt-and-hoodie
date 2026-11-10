@@ -4,9 +4,9 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
 const SPECS = {
-  both: { label: "Both garments", parts: "—", tris: "—", verts: "—" },
-  tshirt: { label: "Crewneck T-Shirt", parts: "—", tris: "—", verts: "—" },
-  hoodie: { label: "Pullover Hoodie", parts: "—", tris: "—", verts: "—" },
+  both: { label: "Both garments", parts: "--", tris: "--", verts: "--" },
+  tshirt: { label: "Crewneck T-Shirt", parts: "--", tris: "--", verts: "--" },
+  hoodie: { label: "Pullover Hoodie", parts: "--", tris: "--", verts: "--" },
 };
 
 const CAMERA_PRESETS = {
