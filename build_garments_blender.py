@@ -520,10 +520,9 @@ def build_tshirt_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
 
 def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offset: float) -> List[bpy.types.Object]:
     spec = gb.get_hoodie_spec()
-    spec.neck_front_y = 0.628
     spec.sleeve_drop_deg = 47.0
-    spec.sleeve_end_rx = 0.076
-    spec.sleeve_end_rz = 0.070
+    spec.sleeve_end_rx = 0.074
+    spec.sleeve_end_rz = 0.068
     verts, quads, uvs, hem_loop, neck_loop, cuff_l, cuff_r, dir_l, dir_r = gb.build_torso_and_sleeves(spec)
 
     mannequin = build_mannequin_collider("TMP_Hoodie_Mannequin", spec, ease_shrink=0.018, x_offset=x_offset, collection=tmp_col)
@@ -559,17 +558,9 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
 
     settled_yup = np.array([from_bl(v.co) for v in body.data.vertices], dtype=np.float64)
 
-    # Build hood pattern & widen front opening / shallow back cave so interior catches soft lookdev fill
+    # Build hood pattern & cloth-drape lightly over the head form for organic creases
     h_verts, h_quads, h_uvs, h_boundary, h_pin_verts = gb.build_hoodie_hood_pattern(spec)
-    n_u, n_v = 33, 18
-    for j in range(n_v):
-        v = j / (n_v - 1)
-        for i in range(n_u):
-            idx = j * n_u + i
-            if v > 0.25:
-                # Gently widen front frame (+6%) and lift back crown (+1.2cm forward) without buckling
-                h_verts[idx, 0] *= 1.0 + 0.06 * math.sin(v * math.pi * 0.5)
-                h_verts[idx, 2] += 0.012 * math.sin(v * math.pi)
+    n_u = 33
     hood = create_mesh_object("Hoodie_Hood", h_verts, h_quads, np.zeros((0, 3), dtype=np.int32), h_uvs, col, mats["hoodie_fleece"])
     hood.location.x = x_offset
 
@@ -581,7 +572,7 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
             hood_pins[j * n_u + i] = 0.85
     for idx in h_pin_verts[n_u:]:
         hood_pins[idx] = max(hood_pins.get(idx, 0.0), 0.55)
-    run_cloth_drape(hood, hood_pins, frames=8, mass=0.28, tension=30.0, compression=22.0, bending=4.5, self_collision=True)
+    run_cloth_drape(hood, hood_pins, frames=8, mass=0.28, tension=30.0, compression=22.0, bending=4.5, self_collision=False)
 
     # Solidify Body and Hood outward
     for ob, th in ((body, 0.0034), (hood, 0.0028)):
@@ -609,10 +600,10 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
         c_sub = gb.build_ribbed_band_from_loop(
             base_pts=smooth_radial_loop(settled_yup[cuff_loop], dir_settled, iters=1) - dir_settled * 0.0020,
             extrude_vec=dir_settled * 0.064,
-            radial_scale_profile=[1.045, 0.955, 0.895, 0.905],
-            rib_count=20,
-            rib_amp=0.0005,
-            thickness=0.0028,
+            radial_scale_profile=[1.048, 0.960, 0.915, 0.925],
+            rib_count=16,
+            rib_amp=0.0004,
+            thickness=0.0026,
             n_fine_override=32,
         )
         c_ob = create_mesh_object(f"Hoodie_Cuff_{tag}", c_sub.vertices, c_sub.quads, c_sub.tris, c_sub.uvs, col, mats["hoodie_rib"])
