@@ -9,13 +9,25 @@ and optionally renders 'blender_studio_render.png'.
 """
 
 from pathlib import Path
+import shutil
 import sys
+import tempfile
 import bpy
 from mathutils import Vector
 
 
 def clear_scene() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.wm.read_factory_settings(use_empty=False)
+    for obj in list(bpy.data.objects):
+        bpy.data.objects.remove(obj, do_unlink=True)
+    for mesh in list(bpy.data.meshes):
+        bpy.data.meshes.remove(mesh)
+    for mat in list(bpy.data.materials):
+        bpy.data.materials.remove(mat)
+    for light in list(bpy.data.lights):
+        bpy.data.lights.remove(light)
+    for cam in list(bpy.data.cameras):
+        bpy.data.cameras.remove(cam)
 
 
 def get_or_create_collection(name: str, parent=None):
@@ -148,14 +160,10 @@ def setup_studio(studio_col) -> None:
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
-    scene.cycles.samples = 48
-    try:
-        scene.cycles.use_denoising = True
-        scene.cycles.denoiser = "OPENIMAGEDENOISE"
-    except Exception:
-        pass
-    scene.render.resolution_x = 1280
-    scene.render.resolution_y = 800
+    scene.cycles.samples = 64
+    scene.cycles.use_denoising = False
+    scene.render.resolution_x = 1024
+    scene.render.resolution_y = 640
     scene.render.image_settings.file_format = "PNG"
 
 
@@ -180,7 +188,22 @@ def main() -> None:
     setup_studio(studio_col)
 
     blend_out = folder / "shirt_and_hoodie.blend"
-    bpy.ops.wm.save_as_mainfile(filepath=str(blend_out), compress=True)
+    blend_out.parent.mkdir(parents=True, exist_ok=True)
+    saved = False
+    for target_path in [blend_out, Path(tempfile.gettempdir()) / "shirt_and_hoodie.blend"]:
+        for use_compress in [True, False]:
+            try:
+                bpy.ops.wm.save_as_mainfile(filepath=str(target_path), compress=use_compress)
+                if target_path != blend_out:
+                    shutil.copy2(target_path, blend_out)
+                saved = True
+                break
+            except RuntimeError as exc:
+                print(f"save_as_mainfile failed ({target_path}, compress={use_compress}): {exc}")
+        if saved:
+            break
+    if not saved:
+        raise RuntimeError(f"Could not save {blend_out}")
     print(f"Saved Blender scene: {blend_out}")
 
     if "--render" in sys.argv:
