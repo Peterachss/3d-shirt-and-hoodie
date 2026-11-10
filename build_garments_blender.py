@@ -318,9 +318,9 @@ def run_cloth_drape(
         s.shrink_min = shrink_min
 
     cl.collision_settings.use_collision = True
-    cl.collision_settings.distance_min = 0.004
+    cl.collision_settings.distance_min = 0.005
     cl.collision_settings.use_self_collision = True
-    cl.collision_settings.self_distance_min = 0.006
+    cl.collision_settings.self_distance_min = 0.008
     cl.collision_settings.self_friction = 4.0
 
     sc = bpy.context.scene
@@ -522,10 +522,10 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     for idx in h_pin_verts[n_u:]:
         # Gently stabilize front opening arch while letting crown/sides slouch with gravity
         hood_pins[idx] = 0.42
-    run_cloth_drape(hood, hood_pins, frames=20, mass=0.30, tension=26.0, compression=18.0, bending=2.0)
+    run_cloth_drape(hood, hood_pins, frames=18, mass=0.28, tension=28.0, compression=20.0, bending=2.6)
 
     # Solidify Body and Hood outward
-    for ob, th in ((body, 0.0036), (hood, 0.0040)):
+    for ob, th in ((body, 0.0034), (hood, 0.0032)):
         sol = ob.modifiers.new("Solidify", "SOLIDIFY")
         sol.thickness = th
         sol.offset = 1.0
@@ -534,34 +534,34 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
 
     # Ribbed waistband & wrist cuffs built from settled loops (clear of z-fighting & interlocked)
     wb_sub = gb.build_ribbed_band_from_loop(
-        base_pts=settled_yup[hem_loop] + np.array([0.0, 0.005, 0.0]),
-        extrude_vec=np.array([0.0, -0.072, 0.0]),
-        radial_scale_profile=[1.012, 0.94, 0.905, 0.915],
-        rib_count=56,
-        rib_amp=0.0008,
-        thickness=0.0034,
+        base_pts=settled_yup[hem_loop] + np.array([0.0, 0.0015, 0.0]),
+        extrude_vec=np.array([0.0, -0.070, 0.0]),
+        radial_scale_profile=[1.024, 0.945, 0.910, 0.920],
+        rib_count=52,
+        rib_amp=0.0006,
+        thickness=0.0030,
     )
     waistband = create_mesh_object("Hoodie_Waistband", wb_sub.vertices, wb_sub.quads, wb_sub.tris, wb_sub.uvs, col, mats["hoodie_rib"])
     waistband.location.x = x_offset
 
     cuff_l_sub = gb.build_ribbed_band_from_loop(
-        base_pts=settled_yup[cuff_l] - settled_cuff_dir(cuff_l, dir_l) * 0.005,
-        extrude_vec=settled_cuff_dir(cuff_l, dir_l) * 0.067,
-        radial_scale_profile=[1.022, 0.90, 0.85, 0.86],
-        rib_count=28,
-        rib_amp=0.0007,
-        thickness=0.0032,
+        base_pts=settled_yup[cuff_l] - settled_cuff_dir(cuff_l, dir_l) * 0.0015,
+        extrude_vec=settled_cuff_dir(cuff_l, dir_l) * 0.065,
+        radial_scale_profile=[1.045, 0.915, 0.865, 0.875],
+        rib_count=26,
+        rib_amp=0.0005,
+        thickness=0.0028,
     )
     cuff_l_ob = create_mesh_object("Hoodie_Cuff_L", cuff_l_sub.vertices, cuff_l_sub.quads, cuff_l_sub.tris, cuff_l_sub.uvs, col, mats["hoodie_rib"])
     cuff_l_ob.location.x = x_offset
 
     cuff_r_sub = gb.build_ribbed_band_from_loop(
-        base_pts=settled_yup[cuff_r] - settled_cuff_dir(cuff_r, dir_r) * 0.005,
-        extrude_vec=settled_cuff_dir(cuff_r, dir_r) * 0.067,
-        radial_scale_profile=[1.022, 0.90, 0.85, 0.86],
-        rib_count=28,
-        rib_amp=0.0007,
-        thickness=0.0032,
+        base_pts=settled_yup[cuff_r] - settled_cuff_dir(cuff_r, dir_r) * 0.0015,
+        extrude_vec=settled_cuff_dir(cuff_r, dir_r) * 0.065,
+        radial_scale_profile=[1.045, 0.915, 0.865, 0.875],
+        rib_count=26,
+        rib_amp=0.0005,
+        thickness=0.0028,
     )
     cuff_r_ob = create_mesh_object("Hoodie_Cuff_R", cuff_r_sub.vertices, cuff_r_sub.quads, cuff_r_sub.tris, cuff_r_sub.uvs, col, mats["hoodie_rib"])
     cuff_r_ob.location.x = x_offset
