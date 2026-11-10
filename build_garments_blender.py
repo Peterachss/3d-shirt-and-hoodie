@@ -334,7 +334,9 @@ def run_cloth_drape(
         sc.frame_set(f)
 
     apply_modifier(garment, cl.name)
-    garment.vertex_groups.remove(vg)
+    pin_vg = garment.vertex_groups.get("Pin")
+    if pin_vg is not None:
+        garment.vertex_groups.remove(pin_vg)
     sc.frame_set(1)
 
 
