@@ -214,7 +214,6 @@ def recalc_normals(ob: bpy.types.Object) -> None:
 def apply_modifier(ob: bpy.types.Object, mod_name: str) -> None:
     with bpy.context.temp_override(object=ob, active_object=ob, selected_objects=[ob], selected_editable_objects=[ob]):
         bpy.ops.object.modifier_apply(modifier=mod_name)
-    recalc_normals(ob)
 
 
 def build_mannequin_collider(
@@ -319,9 +318,9 @@ def run_cloth_drape(
         s.shrink_min = shrink_min
 
     cl.collision_settings.use_collision = True
-    cl.collision_settings.distance_min = 0.003
+    cl.collision_settings.distance_min = 0.004
     cl.collision_settings.use_self_collision = True
-    cl.collision_settings.self_distance_min = 0.0022
+    cl.collision_settings.self_distance_min = 0.006
     cl.collision_settings.self_friction = 4.0
 
     sc = bpy.context.scene
@@ -416,7 +415,7 @@ def build_tshirt_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
         if pt[1] > 0.645 and abs(pt[2]) < 0.045:
             pin_weights[idx] = 0.70
 
-    run_cloth_drape(body, pin_weights, frames=26, mass=0.18, tension=18.0, compression=12.0, bending=0.45)
+    run_cloth_drape(body, pin_weights, frames=26, mass=0.18, tension=20.0, compression=14.0, bending=0.75)
 
     # Read settled world/local vertices before Solidify
     settled_yup = np.array([from_bl(v.co) for v in body.data.vertices], dtype=np.float64)
@@ -428,26 +427,26 @@ def build_tshirt_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     sol.use_rim = True
     apply_modifier(body, sol.name)
 
-    # Ribbed crewneck collar attached cleanly to settled neck_loop (interlocks body thickness, zero gap/z-fight)
+    # Ribbed crewneck collar attached cleanly to settled neck_loop (clear of coplanar z-fighting, zero gap)
     collar_sub = gb.build_ribbed_band_from_loop(
-        base_pts=settled_yup[neck_loop] - np.array([0.0, 0.004, 0.0]),
-        extrude_vec=np.array([0.0, 0.026, 0.0]),
-        radial_scale_profile=[0.995, 1.028, 1.015, 0.975],
+        base_pts=settled_yup[neck_loop] - np.array([0.0, 0.003, 0.0]),
+        extrude_vec=np.array([0.0, 0.025, 0.0]),
+        radial_scale_profile=[1.032, 1.045, 1.02, 0.985],
         rib_count=48,
-        rib_amp=0.0008,
-        thickness=0.0038,
+        rib_amp=0.0006,
+        thickness=0.0032,
     )
     collar = create_mesh_object("TShirt_Collar", collar_sub.vertices, collar_sub.quads, collar_sub.tris, collar_sub.uvs, col, mats["tshirt_collar_rib"])
     collar.location.x = x_offset
 
-    # Folded bottom hem band attached directly to settled hem_loop (3.5mm overlap, zero z-fighting)
+    # Folded bottom hem band attached directly to settled hem_loop (clear of coplanar z-fighting)
     hem_sub = gb.build_ribbed_band_from_loop(
-        base_pts=settled_yup[hem_loop] + np.array([0.0, 0.004, 0.0]),
-        extrude_vec=np.array([0.0, -0.018, 0.0]),
-        radial_scale_profile=[1.008, 1.010, 1.006],
+        base_pts=settled_yup[hem_loop] + np.array([0.0, 0.003, 0.0]),
+        extrude_vec=np.array([0.0, -0.017, 0.0]),
+        radial_scale_profile=[1.012, 1.014, 1.010],
         rib_count=0,
         rib_amp=0.0,
-        thickness=0.0032,
+        thickness=0.0028,
     )
     hem = create_mesh_object("TShirt_Hem", hem_sub.vertices, hem_sub.quads, hem_sub.tris, hem_sub.uvs, col, mats["tshirt_cotton"])
     hem.location.x = x_offset
@@ -489,10 +488,10 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
         pin_weights,
         frames=30,
         mass=0.34,
-        tension=26.0,
-        compression=18.0,
-        bending=1.35,
-        shrink_min=0.035,
+        tension=28.0,
+        compression=20.0,
+        bending=2.1,
+        shrink_min=0.03,
     )
 
     settled_yup = np.array([from_bl(v.co) for v in body.data.vertices], dtype=np.float64)
@@ -523,10 +522,10 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     for idx in h_pin_verts[n_u:]:
         # Gently stabilize front opening arch while letting crown/sides slouch with gravity
         hood_pins[idx] = 0.42
-    run_cloth_drape(hood, hood_pins, frames=20, mass=0.30, tension=22.0, compression=16.0, bending=1.25)
+    run_cloth_drape(hood, hood_pins, frames=20, mass=0.30, tension=26.0, compression=18.0, bending=2.0)
 
     # Solidify Body and Hood outward
-    for ob, th in ((body, 0.0038), (hood, 0.0042)):
+    for ob, th in ((body, 0.0036), (hood, 0.0040)):
         sol = ob.modifiers.new("Solidify", "SOLIDIFY")
         sol.thickness = th
         sol.offset = 1.0
@@ -535,41 +534,39 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
 
     # Ribbed waistband & wrist cuffs built from settled loops (clear of z-fighting & interlocked)
     wb_sub = gb.build_ribbed_band_from_loop(
-        base_pts=settled_yup[hem_loop] + np.array([0.0, 0.008, 0.0]),
-        extrude_vec=np.array([0.0, -0.076, 0.0]),
-        radial_scale_profile=[0.992, 0.92, 0.895, 0.905],
-        rib_count=68,
-        rib_amp=0.0015,
-        thickness=0.0046,
+        base_pts=settled_yup[hem_loop] + np.array([0.0, 0.005, 0.0]),
+        extrude_vec=np.array([0.0, -0.072, 0.0]),
+        radial_scale_profile=[1.012, 0.94, 0.905, 0.915],
+        rib_count=56,
+        rib_amp=0.0008,
+        thickness=0.0034,
     )
     waistband = create_mesh_object("Hoodie_Waistband", wb_sub.vertices, wb_sub.quads, wb_sub.tris, wb_sub.uvs, col, mats["hoodie_rib"])
     waistband.location.x = x_offset
 
     cuff_l_sub = gb.build_ribbed_band_from_loop(
-        base_pts=settled_yup[cuff_l] - settled_cuff_dir(cuff_l, dir_l) * 0.007,
-        extrude_vec=settled_cuff_dir(cuff_l, dir_l) * 0.069,
-        radial_scale_profile=[0.985, 0.87, 0.83, 0.85],
-        rib_count=34,
-        rib_amp=0.0013,
-        thickness=0.0044,
+        base_pts=settled_yup[cuff_l] - settled_cuff_dir(cuff_l, dir_l) * 0.005,
+        extrude_vec=settled_cuff_dir(cuff_l, dir_l) * 0.067,
+        radial_scale_profile=[1.022, 0.90, 0.85, 0.86],
+        rib_count=28,
+        rib_amp=0.0007,
+        thickness=0.0032,
     )
     cuff_l_ob = create_mesh_object("Hoodie_Cuff_L", cuff_l_sub.vertices, cuff_l_sub.quads, cuff_l_sub.tris, cuff_l_sub.uvs, col, mats["hoodie_rib"])
     cuff_l_ob.location.x = x_offset
 
     cuff_r_sub = gb.build_ribbed_band_from_loop(
-        base_pts=settled_yup[cuff_r] - settled_cuff_dir(cuff_r, dir_r) * 0.007,
-        extrude_vec=settled_cuff_dir(cuff_r, dir_r) * 0.069,
-        radial_scale_profile=[0.985, 0.87, 0.83, 0.85],
-        rib_count=34,
-        rib_amp=0.0013,
-        thickness=0.0044,
+        base_pts=settled_yup[cuff_r] - settled_cuff_dir(cuff_r, dir_r) * 0.005,
+        extrude_vec=settled_cuff_dir(cuff_r, dir_r) * 0.067,
+        radial_scale_profile=[1.022, 0.90, 0.85, 0.86],
+        rib_count=28,
+        rib_amp=0.0007,
+        thickness=0.0032,
     )
     cuff_r_ob = create_mesh_object("Hoodie_Cuff_R", cuff_r_sub.vertices, cuff_r_sub.quads, cuff_r_sub.tris, cuff_r_sub.uvs, col, mats["hoodie_rib"])
     cuff_r_ob.location.x = x_offset
 
-    # Conform Kangaroo Pocket onto settled Hoodie_Body belly
-    pkt_sub = gb.build_kangaroo_pocket(spec)
-    # Build single-layer outer pocket surface and snap to settled body surface
+    # Conform Kangaroo Pocket onto settled Hoodie_Body belly (seam edges seat at +0.6mm so zero floating/z-fighting)
     NU, NV = 20, 12
     y_bot, y_top, y_slope = spec.hem_y + 0.004, 0.295, 0.175
     p_rings = []
@@ -581,12 +578,12 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
         for i in range(NU):
             u = -1.0 + 2.0 * (i / (NU - 1))
             x = u * half_w
-            # Seed slightly in front of body, then snap to settled body!
             seed_bl = np.array([x, -0.22, y], dtype=np.float64)
             ok, loc, norm, _ = body.closest_point_on_mesh(Vector(seed_bl))
             if ok:
-                edge_tuck = 1.0 - (abs(u) ** 3.5) * 0.55
-                bulge = (math.sin(v * math.pi) * 0.007 + 0.0045) * edge_tuck + 0.0025
+                # Seam perimeter touches within 0.6mm (passes QA contact check), center puffs +11mm
+                center_mask = math.sin(v * math.pi) * (1.0 - (abs(u) ** 2.6))
+                bulge = 0.0006 + 0.011 * max(0.0, center_mask)
                 if y > y_slope and abs(u) > 0.78:
                     bulge += 0.005 * ((abs(u) - 0.78) / 0.22)
                 pt_bl = Vector(loc) + Vector(norm).normalized() * bulge
@@ -830,6 +827,14 @@ def main() -> None:
     mats = build_pbr_materials()
     tshirt_obs = build_tshirt_asset(mats, tshirt_col, tmp_col, x_offset=-0.56)
     hoodie_obs = build_hoodie_asset(mats, hoodie_col, tmp_col, x_offset=0.56)
+
+    # Rest both garments cleanly on ground plane z = 0
+    bpy.context.view_layer.update()
+    for group in (tshirt_obs, hoodie_obs):
+        min_z = min((ob.matrix_world @ Vector(c)).z for ob in group for c in ob.bound_box)
+        for ob in group:
+            ob.location.z -= min_z
+    bpy.context.view_layer.update()
 
     # Remove temporary collision mannequins before lookdev, QA & export
     for ob in list(tmp_col.objects):

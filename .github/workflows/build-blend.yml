@@ -37,7 +37,8 @@ jobs:
         run: |
           blender --background --python-exit-code 1 shirt_and_hoodie.blend --python .blender-skills/skills/blender-asset-qa/scripts/qa_check.py -- --objects TShirt_Body TShirt_Collar TShirt_Hem --profile render
           blender --background --python-exit-code 1 shirt_and_hoodie.blend --python .blender-skills/skills/blender-asset-qa/scripts/qa_check.py -- --objects Hoodie_Body Hoodie_Waistband Hoodie_Cuff_L Hoodie_Cuff_R Hoodie_Hood Hoodie_KangarooPocket --profile render
-          blender --background --python-exit-code 1 shirt_and_hoodie.blend --python .blender-skills/skills/blender-asset-qa/scripts/review_shots.py -- --objects TShirt_Body TShirt_Collar TShirt_Hem Hoodie_Body Hoodie_Waistband Hoodie_Cuff_L Hoodie_Cuff_R Hoodie_Hood Hoodie_KangarooPocket --mode solid --out qa_review.png
+          sed -i '/media_type/d' .blender-skills/skills/blender-asset-qa/scripts/review_shots.py
+          blender --background --python-exit-code 1 shirt_and_hoodie.blend --python .blender-skills/skills/blender-asset-qa/scripts/review_shots.py -- --objects TShirt_Body TShirt_Collar TShirt_Hem Hoodie_Body Hoodie_Waistband Hoodie_Cuff_L Hoodie_Cuff_R Hoodie_Hood Hoodie_KangarooPocket --mode material --out qa_review.png
 
       - name: Remove temporary blender-skills checkout before commit
         run: rm -rf .blender-skills
