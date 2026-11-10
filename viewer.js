@@ -42,7 +42,7 @@ const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environment = envTex;
 scene.environmentIntensity = 0.55;
 
-const camera = new THREE.PerspectiveCamera(36, host.clientWidth / Math.max(1, host.clientHeight), 0.05, 50);
+const camera = new THREE.PerspectiveCamera(36, host.clientWidth / Math.max(1, host.clientHeight), 0.12, 24);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.07;
@@ -102,12 +102,85 @@ const wireMaterial = new THREE.MeshBasicMaterial({
   wireframe: true,
 });
 
+const FABRIC_PRESETS = {
+  cotton: { roughness: 0.86, sheen: 0.16, sheenRoughness: 0.62, normalScale: 0.24, tile: 48 },
+  terry: { roughness: 0.90, sheen: 0.22, sheenRoughness: 0.70, normalScale: 0.42, tile: 42 },
+  fleece: { roughness: 0.94, sheen: 0.28, sheenRoughness: 0.76, normalScale: 0.28, tile: 48 },
+  waffle: { roughness: 0.84, sheen: 0.16, sheenRoughness: 0.58, normalScale: 0.65, tile: 34 },
+  nylon: { roughness: 0.34, sheen: 0.35, sheenRoughness: 0.26, normalScale: 0.26, tile: 52 },
+};
+
+const fabricTextures = new Map();
+
+function getFabricNormalTexture(kind) {
+  if (fabricTextures.has(kind)) return fabricTextures.get(kind);
+  const size = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const img = ctx.createImageData(size, size);
+  const h = new Float32Array(size * size);
+
+  for (let y = 0; y < size; y++) {
+    const v = (y / size) * Math.PI * 2;
+    for (let x = 0; x < size; x++) {
+      const u = (x / size) * Math.PI * 2;
+      let val = 0;
+      if (kind === "cotton") {
+        val = 0.45 * Math.sin(16 * u + 0.5 * Math.sin(16 * v)) + 0.35 * Math.sin(16 * v);
+      } else if (kind === "terry") {
+        val = 0.5 * Math.sin(12 * u) * Math.cos(12 * v) + 0.3 * Math.sin(24 * (u + v));
+      } else if (kind === "fleece") {
+        val = 0.4 * Math.sin(14 * u) * Math.cos(14 * v) + 0.35 * Math.sin(28 * u + 19 * v);
+      } else if (kind === "waffle") {
+        const gu = Math.cos(8 * u);
+        const gv = Math.cos(8 * v);
+        val = 0.8 * Math.min(gu, gv) + 0.2 * gu * gv;
+      } else {
+        val = 0.6 * Math.sin(18 * u) + 0.6 * Math.sin(18 * v);
+      }
+      h[y * size + x] = val;
+    }
+  }
+
+  const strength = kind === "waffle" ? 1.8 : kind === "terry" ? 1.4 : 1.0;
+  for (let y = 0; y < size; y++) {
+    const ym = (y - 1 + size) % size;
+    const yp = (y + 1) % size;
+    for (let x = 0; x < size; x++) {
+      const xm = (x - 1 + size) % size;
+      const xp = (x + 1) % size;
+      const dx = (h[y * size + xp] - h[y * size + xm]) * 0.5 * strength;
+      const dy = (h[yp * size + x] - h[ym * size + x]) * 0.5 * strength;
+      const inv = 1.0 / Math.sqrt(dx * dx + dy * dy + 1.0);
+      const idx = (y * size + x) * 4;
+      img.data[idx] = Math.round((-dx * inv * 0.5 + 0.5) * 255);
+      img.data[idx + 1] = Math.round((-dy * inv * 0.5 + 0.5) * 255);
+      img.data[idx + 2] = Math.round((inv * 0.5 + 0.5) * 255);
+      img.data[idx + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  const tile = FABRIC_PRESETS[kind]?.tile || 22;
+  tex.repeat.set(tile, tile);
+  tex.colorSpace = THREE.NoColorSpace;
+  fabricTextures.set(kind, tex);
+  return tex;
+}
+
 const state = {
   garment: "both",
   camera: "three-quarter",
   shading: "studio",
   tshirtColor: "#eae6de",
   hoodieColor: "#2f343d",
+  tshirtFabric: "cotton",
+  hoodieFabric: "fleece",
 };
 
 let camAnim = null;
@@ -149,21 +222,53 @@ function setCameraTarget(presetKey, immediate = false) {
 
 function applyColors() {
   const tshirtCol = new THREE.Color(state.tshirtColor);
-  const collarCol = tshirtCol.clone().multiplyScalar(0.95);
+  const collarCol = tshirtCol.clone().multiplyScalar(0.94);
   const hoodieCol = new THREE.Color(state.hoodieColor);
   const ribCol = hoodieCol.clone().multiplyScalar(0.88);
+  const tPreset = FABRIC_PRESETS[state.tshirtFabric] || FABRIC_PRESETS.cotton;
+  const hPreset = FABRIC_PRESETS[state.hoodieFabric] || FABRIC_PRESETS.fleece;
+  const tTex = getFabricNormalTexture(state.tshirtFabric);
+  const hTex = getFabricNormalTexture(state.hoodieFabric);
 
   for (const [mesh, mat] of originalMaterials.entries()) {
     if (!mat || !mat.name) continue;
     if (mat.name === "tshirt_cotton") {
       mat.color.copy(tshirtCol);
+      mat.roughness = tPreset.roughness;
+      mat.sheen = tPreset.sheen;
+      mat.sheenRoughness = tPreset.sheenRoughness;
+      mat.sheenColor.copy(tshirtCol).lerp(new THREE.Color(0xffffff), 0.14);
+      mat.normalMap = tTex;
+      mat.normalScale.set(tPreset.normalScale, tPreset.normalScale);
     } else if (mat.name === "tshirt_collar_rib") {
       mat.color.copy(collarCol);
+      mat.roughness = Math.min(0.97, tPreset.roughness + 0.03);
+      mat.sheen = tPreset.sheen * 0.85;
+      mat.sheenRoughness = tPreset.sheenRoughness;
+      mat.sheenColor.copy(collarCol).lerp(new THREE.Color(0xffffff), 0.10);
+      mat.normalMap = tTex;
+      mat.normalScale.set(tPreset.normalScale * 1.15, tPreset.normalScale * 1.15);
     } else if (mat.name === "hoodie_fleece") {
       mat.color.copy(hoodieCol);
+      mat.roughness = hPreset.roughness;
+      mat.sheen = hPreset.sheen;
+      mat.sheenRoughness = hPreset.sheenRoughness;
+      mat.sheenColor.copy(hoodieCol).lerp(new THREE.Color(0xffffff), 0.12);
+      mat.normalMap = hTex;
+      mat.normalScale.set(hPreset.normalScale, hPreset.normalScale);
     } else if (mat.name === "hoodie_rib") {
       mat.color.copy(ribCol);
+      mat.roughness = Math.min(0.97, hPreset.roughness + 0.03);
+      mat.sheen = hPreset.sheen * 0.85;
+      mat.sheenRoughness = hPreset.sheenRoughness;
+      mat.sheenColor.copy(ribCol).lerp(new THREE.Color(0xffffff), 0.10);
+      mat.normalMap = hTex;
+      mat.normalScale.set(hPreset.normalScale * 1.15, hPreset.normalScale * 1.15);
+    } else if (mat.name === "hoodie_drawstring") {
+      mat.roughness = 0.84;
+      mat.sheen = 0.25;
     }
+    mat.needsUpdate = true;
     mesh.material.needsUpdate = true;
   }
 }
@@ -240,8 +345,21 @@ loader.load(
       obj.receiveShadow = true;
       originalPosX.set(obj, obj.position.x);
       if (obj.material) {
-        obj.material.roughness = Math.max(obj.material.roughness ?? 0.85, 0.72);
-        originalMaterials.set(obj, obj.material);
+        let mat = obj.material;
+        if (mat.name !== "hoodie_metal") {
+          const phys = new THREE.MeshPhysicalMaterial({
+            name: mat.name,
+            color: mat.color ? mat.color.clone() : new THREE.Color(0xffffff),
+            roughness: mat.roughness ?? 0.88,
+            metalness: 0.0,
+            sheen: 0.25,
+            sheenRoughness: 0.65,
+            sheenColor: new THREE.Color(0xffffff),
+          });
+          mat = phys;
+          obj.material = phys;
+        }
+        originalMaterials.set(obj, mat);
       }
       if (obj.name.startsWith("TShirt")) {
         tshirtNodes.push(obj);
@@ -298,6 +416,34 @@ document.querySelectorAll("[data-shading]").forEach((btn) => {
     btn.classList.add("is-active");
     state.shading = btn.dataset.shading;
     applyShading();
+  });
+});
+
+document.querySelectorAll("[data-fabric]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const target = btn.dataset.fabricTarget;
+    document.querySelectorAll(`[data-fabric-target="${target}"]`).forEach((b) => b.classList.remove("is-active"));
+    btn.classList.add("is-active");
+    if (target === "tshirt") {
+      state.tshirtFabric = btn.dataset.fabric;
+      document.getElementById("tshirtFabricName").textContent = btn.dataset.label;
+    } else {
+      state.hoodieFabric = btn.dataset.fabric;
+      document.getElementById("hoodieFabricName").textContent = btn.dataset.label;
+    }
+    applyColors();
+  });
+});
+
+document.querySelectorAll("[data-cycles-src]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-cycles-src]").forEach((b) => b.classList.remove("is-active"));
+    btn.classList.add("is-active");
+    const img = document.getElementById("cyclesImg");
+    if (img) {
+      img.src = btn.dataset.cyclesSrc;
+      img.alt = btn.dataset.cyclesAlt || img.alt;
+    }
   });
 });
 

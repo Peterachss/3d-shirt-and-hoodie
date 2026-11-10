@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import math
 import os
+import struct
 import sys
+import zlib
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -75,9 +77,84 @@ def set_input(node, names: Tuple[str, ...], value) -> None:
             return
 
 
+def write_png_rgb(path: Path, rgb_u8: np.ndarray) -> None:
+    """Write an (H, W, 3) uint8 array as a valid lossless RGB PNG using stdlib only."""
+    h, w, _ = rgb_u8.shape
+    raw_rows = b"".join(b"\x00" + rgb_u8[y].tobytes() for y in range(h))
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw_rows, 6)) + chunk(b"IEND", b"")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(png)
+
+
+def generate_fabric_normal_png(path: Path, style: str, size: int = 256) -> bpy.types.Image:
+    """Create and pack a fine seamless tileable tangent-space fabric normal map."""
+    u = np.linspace(0.0, 1.0, size, endpoint=False)
+    v = np.linspace(0.0, 1.0, size, endpoint=False)
+    uu, vv = np.meshgrid(u, v)
+    rng = np.random.default_rng(42 if style == "cotton_jersey" else (77 if style == "heavy_fleece" else 99))
+    micro_grain = rng.normal(0.0, 0.08, size=(size, size))
+
+    if style == "cotton_jersey":
+        # Ultra-fine interlocked combed cotton knit
+        h = (
+            0.40 * np.sin(2.0 * math.pi * 48.0 * uu + 0.45 * np.sin(2.0 * math.pi * 48.0 * vv))
+            + 0.32 * np.sin(2.0 * math.pi * 48.0 * vv)
+            + micro_grain
+        )
+        strength = 0.45
+    elif style == "rib_knit":
+        # Fine vertical rib columns + cross-wale knit
+        h = (
+            0.70 * np.cos(2.0 * math.pi * 32.0 * uu)
+            + 0.25 * np.sin(2.0 * math.pi * 64.0 * vv) * np.cos(2.0 * math.pi * 32.0 * uu)
+            + micro_grain * 0.7
+        )
+        strength = 0.75
+    elif style == "heavy_fleece":
+        # Matte napped French terry / fleece micro-weave (no coarse diagonal bands)
+        h = (
+            0.34 * np.sin(2.0 * math.pi * 44.0 * uu) * np.cos(2.0 * math.pi * 44.0 * vv)
+            + 0.28 * np.sin(2.0 * math.pi * 44.0 * (uu + vv))
+            + micro_grain * 1.4
+        )
+        strength = 0.50
+    else:
+        # Tightly braided drawstring cord weave
+        h = 0.65 * np.sin(2.0 * math.pi * 24.0 * (uu * 2.0 + vv)) + 0.20 * np.cos(2.0 * math.pi * 48.0 * vv) + micro_grain * 0.5
+        strength = 0.65
+
+    dh_dx = (np.roll(h, -1, axis=1) - np.roll(h, 1, axis=1)) * 0.5 * strength
+    dh_dy = (np.roll(h, -1, axis=0) - np.roll(h, 1, axis=0)) * 0.5 * strength
+    nz = np.ones_like(dh_dx)
+    inv = 1.0 / np.sqrt(dh_dx * dh_dx + dh_dy * dh_dy + nz * nz)
+    nx = -dh_dx * inv
+    ny = -dh_dy * inv
+    nz = nz * inv
+    rgb = np.stack([nx * 0.5 + 0.5, ny * 0.5 + 0.5, nz * 0.5 + 0.5], axis=-1)
+    rgb_u8 = np.clip(rgb * 255.0, 0, 255).astype(np.uint8)
+    write_png_rgb(path, rgb_u8)
+
+    img = bpy.data.images.load(str(path), check_existing=True)
+    img.colorspace_settings.name = "Non-Color"
+    img.pack()
+    return img
+
+
 def build_pbr_materials() -> Dict[str, bpy.types.Material]:
-    """Create physically plausible PBR fabric & metal materials (glTF + Cycles ready)."""
+    """Create physically plausible PBR fabric & metal materials with packed normal maps (glTF + Cycles ready)."""
     mats: Dict[str, bpy.types.Material] = {}
+    tex_dir = FOLDER / "textures"
+    normal_imgs = {
+        "cotton": generate_fabric_normal_png(tex_dir / "t_fabric_cotton_n.png", "cotton_jersey"),
+        "rib": generate_fabric_normal_png(tex_dir / "t_fabric_rib_n.png", "rib_knit"),
+        "fleece": generate_fabric_normal_png(tex_dir / "t_fabric_fleece_n.png", "heavy_fleece"),
+        "cord": generate_fabric_normal_png(tex_dir / "t_fabric_cord_n.png", "cord"),
+    }
 
     def make_fabric(
         name: str,
@@ -85,9 +162,9 @@ def build_pbr_materials() -> Dict[str, bpy.types.Material]:
         rough_base: float,
         sheen: float,
         sheen_rough: float,
-        bump_strength: float,
-        rib_scale: float = 0.0,
-        noise_scale: float = 180.0,
+        normal_key: str,
+        normal_strength: float,
+        uv_tile: float,
     ):
         mat = bpy.data.materials.new(name)
         ensure_material_nodes(mat)
@@ -103,59 +180,32 @@ def build_pbr_materials() -> Dict[str, bpy.types.Material]:
         set_input(bsdf, ("Sheen Roughness",), sheen_rough)
 
         tex_coord = nt.nodes.new("ShaderNodeTexCoord")
-        tex_coord.location = (-820, -180)
+        tex_coord.location = (-920, -180)
 
-        noise = nt.nodes.new("ShaderNodeTexNoise")
-        noise.location = (-580, -80)
-        noise.inputs["Scale"].default_value = noise_scale
-        noise.inputs["Detail"].default_value = 6.0
-        noise.inputs["Roughness"].default_value = 0.65
-        nt.links.new(tex_coord.outputs["Object"], noise.inputs["Vector"])
+        mapping = nt.nodes.new("ShaderNodeMapping")
+        mapping.location = (-720, -180)
+        mapping.inputs["Scale"].default_value = (uv_tile, uv_tile, 1.0)
+        nt.links.new(tex_coord.outputs["UV"], mapping.inputs["Vector"])
 
-        # Subtle roughness modulation (+/- 0.06) for Cycles fabric realism
-        ramp = nt.nodes.new("ShaderNodeMapRange")
-        ramp.location = (-360, -40)
-        ramp.inputs["From Min"].default_value = 0.25
-        ramp.inputs["From Max"].default_value = 0.75
-        ramp.inputs["To Min"].default_value = max(0.55, rough_base - 0.07)
-        ramp.inputs["To Max"].default_value = min(0.98, rough_base + 0.06)
-        nt.links.new(noise.outputs["Fac"], ramp.inputs["Value"])
-        nt.links.new(ramp.outputs["Result"], bsdf.inputs["Roughness"])
+        tex_img = nt.nodes.new("ShaderNodeTexImage")
+        tex_img.location = (-460, -220)
+        tex_img.image = normal_imgs[normal_key]
+        nt.links.new(mapping.outputs["Vector"], tex_img.inputs["Vector"])
 
-        bump_src = noise.outputs["Fac"]
-        if rib_scale > 0.0:
-            wave = nt.nodes.new("ShaderNodeTexWave")
-            wave.location = (-580, -300)
-            wave.wave_type = "BANDS"
-            wave.bands_direction = "X"
-            wave.wave_profile = "SIN"
-            wave.inputs["Scale"].default_value = rib_scale
-            wave.inputs["Distortion"].default_value = 0.6
-            nt.links.new(tex_coord.outputs["UV"], wave.inputs["Vector"])
-
-            mix = nt.nodes.new("ShaderNodeMix")
-            mix.data_type = "FLOAT"
-            mix.location = (-360, -240)
-            mix.inputs["Factor"].default_value = 0.75
-            nt.links.new(noise.outputs["Fac"], mix.inputs["A"])
-            nt.links.new(wave.outputs["Fac"], mix.inputs["B"])
-            bump_src = mix.outputs["Result"]
-
-        bump = nt.nodes.new("ShaderNodeBump")
-        bump.location = (-180, -220)
-        bump.inputs["Strength"].default_value = bump_strength
-        bump.inputs["Distance"].default_value = 0.002
-        nt.links.new(bump_src, bump.inputs["Height"])
-        nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+        nrm_map = nt.nodes.new("ShaderNodeNormalMap")
+        nrm_map.location = (-200, -220)
+        nrm_map.inputs["Strength"].default_value = normal_strength
+        nt.links.new(tex_img.outputs["Color"], nrm_map.inputs["Color"])
+        nt.links.new(nrm_map.outputs["Normal"], bsdf.inputs["Normal"])
 
         mats[name] = mat
 
     # Linear albedo values calibrated for AgX contrast & crisp fold sculpting
-    make_fabric("tshirt_cotton", (0.52, 0.50, 0.46, 1.0), 0.87, sheen=0.16, sheen_rough=0.60, bump_strength=0.06, noise_scale=260.0)
-    make_fabric("tshirt_collar_rib", (0.47, 0.45, 0.41, 1.0), 0.89, sheen=0.14, sheen_rough=0.62, bump_strength=0.14, rib_scale=160.0)
-    make_fabric("hoodie_fleece", (0.042, 0.047, 0.056, 1.0), 0.90, sheen=0.15, sheen_rough=0.56, bump_strength=0.085, noise_scale=180.0)
-    make_fabric("hoodie_rib", (0.030, 0.034, 0.042, 1.0), 0.92, sheen=0.14, sheen_rough=0.58, bump_strength=0.16, rib_scale=150.0)
-    make_fabric("hoodie_drawstring", (0.62, 0.59, 0.54, 1.0), 0.84, sheen=0.16, sheen_rough=0.58, bump_strength=0.11, rib_scale=95.0)
+    make_fabric("tshirt_cotton", (0.54, 0.52, 0.48, 1.0), 0.86, sheen=0.16, sheen_rough=0.60, normal_key="cotton", normal_strength=0.18, uv_tile=26.0)
+    make_fabric("tshirt_collar_rib", (0.48, 0.46, 0.42, 1.0), 0.88, sheen=0.14, sheen_rough=0.62, normal_key="rib", normal_strength=0.32, uv_tile=20.0)
+    make_fabric("hoodie_fleece", (0.044, 0.049, 0.058, 1.0), 0.90, sheen=0.15, sheen_rough=0.56, normal_key="fleece", normal_strength=0.22, uv_tile=28.0)
+    make_fabric("hoodie_rib", (0.032, 0.036, 0.044, 1.0), 0.92, sheen=0.14, sheen_rough=0.58, normal_key="rib", normal_strength=0.34, uv_tile=20.0)
+    make_fabric("hoodie_drawstring", (0.64, 0.61, 0.56, 1.0), 0.84, sheen=0.16, sheen_rough=0.58, normal_key="cord", normal_strength=0.28, uv_tile=10.0)
 
     metal = bpy.data.materials.new("hoodie_metal")
     ensure_material_nodes(metal)
@@ -220,6 +270,24 @@ def apply_modifier(ob: bpy.types.Object, mod_name: str) -> None:
         bpy.ops.object.modifier_apply(modifier=mod_name)
 
 
+def clean_mesh_uv_and_doubles(ob: bpy.types.Object, smart_uv: bool = True) -> None:
+    """Remove any coincident vertices and create clean non-overlapping UVs without zero-area faces."""
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(ob.data)
+    bm.free()
+    if smart_uv:
+        for o in bpy.data.objects:
+            o.select_set(o == ob)
+        bpy.context.view_layer.objects.active = ob
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
+        bpy.ops.uv.smart_project(angle_limit=math.radians(66.0), island_margin=0.015)
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+
 def build_mannequin_collider(
     name: str,
     spec: gb.GarmentSpec,
@@ -247,7 +315,7 @@ def build_mannequin_collider(
         neck_rx=spec.neck_rx - 0.012,
         neck_rz_front=spec.neck_rz_front - 0.012,
         neck_rz_back=spec.neck_rz_back - 0.010,
-        sleeve_len=spec.sleeve_len * 0.92,
+        sleeve_len=spec.sleeve_len * 0.985,
         sleeve_drop_deg=spec.sleeve_drop_deg + 1.5,
         sleeve_fwd_deg=spec.sleeve_fwd_deg,
         sleeve_end_rx=spec.sleeve_end_rx - ease_shrink * 0.85,
@@ -445,17 +513,19 @@ def build_tshirt_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     body = create_mesh_object("TShirt_Body", verts, quads, np.zeros((0, 3), dtype=np.int32), uvs, col, mats["tshirt_cotton"])
     body.location.x = x_offset
 
-    # Pin neck + upper shoulder slope so sleeves, chest, and hem drape smoothly
+    # Pin neck + upper shoulder slope + light cuff support so short sleeves hang tailored and round
     pin_weights: Dict[int, float] = {}
     for idx in neck_loop:
         pin_weights[idx] = 1.0
+    for idx in cuff_l + cuff_r:
+        pin_weights[idx] = 0.28
     for idx, pt in enumerate(verts):
         if idx in pin_weights:
             continue
         if pt[1] > 0.640 and abs(pt[2]) < 0.045:
             pin_weights[idx] = 0.72
 
-    run_cloth_drape(body, pin_weights, frames=14, mass=0.18, tension=20.0, compression=14.0, bending=0.85, self_collision=True)
+    run_cloth_drape(body, pin_weights, frames=14, mass=0.18, tension=24.0, compression=18.0, bending=1.65, self_collision=True)
 
     # Read settled world/local vertices before Solidify
     settled_yup = np.array([from_bl(v.co) for v in body.data.vertices], dtype=np.float64)
@@ -493,6 +563,7 @@ def build_tshirt_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
 
     objs = [body, collar, hem]
     for ob in objs:
+        clean_mesh_uv_and_doubles(ob, smart_uv=True)
         sub = ob.modifiers.new("Subdivision", "SUBSURF")
         sub.levels = 1
         sub.render_levels = 2
@@ -519,9 +590,9 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     for idx in neck_loop:
         pin_weights[idx] = 1.0
     for idx in hem_loop:
-        pin_weights[idx] = 0.48
+        pin_weights[idx] = 0.82
     for idx in cuff_l + cuff_r:
-        pin_weights[idx] = 0.18
+        pin_weights[idx] = 0.35
     for idx, pt in enumerate(verts):
         if idx in pin_weights:
             continue
@@ -533,9 +604,9 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
         pin_weights,
         frames=14,
         mass=0.34,
-        tension=28.0,
-        compression=20.0,
-        bending=2.1,
+        tension=30.0,
+        compression=22.0,
+        bending=3.2,
         shrink_min=0.0,
         self_collision=True,
     )
@@ -558,22 +629,22 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
         hood_pins[idx] = max(hood_pins.get(idx, 0.0), 0.55)
     run_cloth_drape(hood, hood_pins, frames=8, mass=0.28, tension=30.0, compression=22.0, bending=4.5, self_collision=False)
 
-    # Solidify Body and Hood outward
-    for ob, th in ((body, 0.0034), (hood, 0.0028)):
+    # Solidify Body and Hood outward (3.4mm eliminates thin inner/outer back-to-back warnings)
+    for ob, th in ((body, 0.0034), (hood, 0.0034)):
         sol = ob.modifiers.new("Solidify", "SOLIDIFY")
         sol.thickness = th
         sol.offset = 1.0
         sol.use_rim = True
         apply_modifier(ob, sol.name)
 
-    # Ribbed waistband & wrist cuffs built from settled loops (tucked 3.5mm upward cleanly)
+    # Ribbed waistband & wrist cuffs built from settled loops (light-tight overlap, zero z-fighting)
     wb_sub = gb.build_ribbed_band_from_loop(
-        base_pts=settled_yup[hem_loop] + np.array([0.0, 0.0035, 0.0]),
+        base_pts=settled_yup[hem_loop] + np.array([0.0, 0.0025, 0.0]),
         extrude_vec=np.array([0.0, -0.070, 0.0]),
-        radial_scale_profile=[1.025, 0.948, 0.914, 0.924],
+        radial_scale_profile=[1.018, 0.946, 0.914, 0.924],
         rib_count=52,
         rib_amp=0.0006,
-        thickness=0.0032,
+        thickness=0.0034,
     )
     waistband = create_mesh_object("Hoodie_Waistband", wb_sub.vertices, wb_sub.quads, wb_sub.tris, wb_sub.uvs, col, mats["hoodie_rib"])
     waistband.location.x = x_offset
@@ -582,12 +653,12 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     for tag, cuff_loop, fallback_dir in (("L", cuff_l, dir_l), ("R", cuff_r, dir_r)):
         dir_settled = loop_outward_dir(settled_yup[cuff_loop], fallback_dir)
         c_sub = gb.build_ribbed_band_from_loop(
-            base_pts=smooth_radial_loop(settled_yup[cuff_loop], dir_settled, iters=1) - dir_settled * 0.0020,
-            extrude_vec=dir_settled * 0.064,
-            radial_scale_profile=[1.048, 0.960, 0.915, 0.925],
+            base_pts=settled_yup[cuff_loop] - dir_settled * 0.0012,
+            extrude_vec=dir_settled * 0.065,
+            radial_scale_profile=[1.052, 0.962, 0.916, 0.926],
             rib_count=16,
             rib_amp=0.0004,
-            thickness=0.0026,
+            thickness=0.0028,
             n_fine_override=32,
         )
         c_ob = create_mesh_object(f"Hoodie_Cuff_{tag}", c_sub.vertices, c_sub.quads, c_sub.tris, c_sub.uvs, col, mats["hoodie_rib"])
@@ -696,6 +767,7 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     objs = [body, waistband, cuff_l_ob, cuff_r_ob, hood, pkt_ob] + extra_objs
     for ob in objs:
         is_small = any(k in ob.name for k in ("Drawstring", "Aglet", "Grommet"))
+        clean_mesh_uv_and_doubles(ob, smart_uv=(not any(k in ob.name for k in ("Aglet", "Grommet"))))
         sub = ob.modifiers.new("Subdivision", "SUBSURF")
         sub.levels = 1
         sub.render_levels = 1 if is_small else 2
@@ -743,12 +815,12 @@ def setup_lookdev_studio(obs: List[bpy.types.Object], studio_col) -> None:
     for p in bg_me.polygons:
         p.use_smooth = True
     bg_ob = bpy.data.objects.new("LD_Backdrop", bg_me)
-    bg_ob.location = (center.x, center.y, lo.z - 0.003)
+    bg_ob.location = (center.x, center.y, lo.z - 0.001)
 
     bg_mat = bpy.data.materials.new("LD_Backdrop")
     ensure_material_nodes(bg_mat)
     bsdf = find_principled(bg_mat)
-    set_input(bsdf, ("Base Color",), (0.28, 0.27, 0.26, 1.0))
+    set_input(bsdf, ("Base Color",), (0.31, 0.30, 0.29, 1.0))
     set_input(bsdf, ("Roughness",), 0.90)
     bg_me.materials.append(bg_mat)
     studio_col.objects.link(bg_ob)

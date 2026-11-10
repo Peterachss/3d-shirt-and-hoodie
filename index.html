@@ -96,10 +96,21 @@
         </section>
 
         <section class="panel-group">
-          <h2 class="group-label">Fabric colorway</h2>
+          <h2 class="group-label">Fabric &amp; colorway</h2>
           <div class="swatch-block">
             <div class="swatch-head">
-              <span>T-Shirt jersey</span>
+              <span>T-Shirt material</span>
+              <span id="tshirtFabricName" class="swatch-value">Cotton jersey</span>
+            </div>
+            <div class="fabric-row" role="group" aria-label="T-shirt fabric material">
+              <button class="fabric-btn is-active" type="button" data-fabric-target="tshirt" data-fabric="cotton" data-label="Cotton jersey">Cotton</button>
+              <button class="fabric-btn" type="button" data-fabric-target="tshirt" data-fabric="terry" data-label="French terry">Terry</button>
+              <button class="fabric-btn" type="button" data-fabric-target="tshirt" data-fabric="waffle" data-label="Waffle knit">Waffle</button>
+              <button class="fabric-btn" type="button" data-fabric-target="tshirt" data-fabric="fleece" data-label="Brushed fleece">Fleece</button>
+              <button class="fabric-btn" type="button" data-fabric-target="tshirt" data-fabric="nylon" data-label="Ripstop nylon">Nylon</button>
+            </div>
+            <div class="swatch-head">
+              <span>T-Shirt color</span>
               <span id="tshirtColorName" class="swatch-value">Bone</span>
             </div>
             <div class="swatch-row" role="group" aria-label="T-shirt color swatches">
@@ -113,7 +124,18 @@
 
           <div class="swatch-block">
             <div class="swatch-head">
-              <span>Hoodie fleece</span>
+              <span>Hoodie material</span>
+              <span id="hoodieFabricName" class="swatch-value">Brushed fleece</span>
+            </div>
+            <div class="fabric-row" role="group" aria-label="Hoodie fabric material">
+              <button class="fabric-btn is-active" type="button" data-fabric-target="hoodie" data-fabric="fleece" data-label="Brushed fleece">Fleece</button>
+              <button class="fabric-btn" type="button" data-fabric-target="hoodie" data-fabric="terry" data-label="French terry">Terry</button>
+              <button class="fabric-btn" type="button" data-fabric-target="hoodie" data-fabric="cotton" data-label="Cotton jersey">Cotton</button>
+              <button class="fabric-btn" type="button" data-fabric-target="hoodie" data-fabric="waffle" data-label="Waffle knit">Waffle</button>
+              <button class="fabric-btn" type="button" data-fabric-target="hoodie" data-fabric="nylon" data-label="Ripstop nylon">Nylon</button>
+            </div>
+            <div class="swatch-head">
+              <span>Hoodie color</span>
               <span id="hoodieColorName" class="swatch-value">Slate</span>
             </div>
             <div class="swatch-row" role="group" aria-label="Hoodie color swatches">
@@ -200,10 +222,14 @@
         </div>
 
         <div id="panelCycles" class="stage-pane cycles-pane" role="tabpanel" aria-labelledby="tabCycles" hidden>
+          <div class="cycles-toolbar" role="group" aria-label="Cycles camera angle">
+            <button class="preset-btn is-active" type="button" data-cycles-src="./blender_studio_render.png" data-cycles-alt="Blender Cycles front hero render of the crewneck T-shirt and pullover hoodie">Front hero</button>
+            <button class="preset-btn" type="button" data-cycles-src="./blender_lookdev_back.png" data-cycles-alt="Blender Cycles 3/4 back lookdev render of the crewneck T-shirt and pullover hoodie">3/4 back lookdev</button>
+          </div>
           <figure class="cycles-figure">
-            <img src="./blender_studio_render.png" alt="Blender Cycles studio render of the crewneck T-shirt and pullover hoodie" />
+            <img id="cyclesImg" src="./blender_studio_render.png" alt="Blender Cycles front hero render of the crewneck T-shirt and pullover hoodie" />
             <figcaption>
-              Rendered in Blender 5.3 Cycles (96 samples, Principled BSDF cloth sheen with procedural weave bump, AgX).
+              Rendered in Blender 5.3 Cycles (96 samples, packed fabric normal maps, AgX lookdev).
             </figcaption>
           </figure>
         </div>
