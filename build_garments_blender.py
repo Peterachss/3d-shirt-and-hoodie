@@ -298,6 +298,7 @@ def run_cloth_drape(
     compression: float,
     bending: float,
     shrink_min: float = 0.0,
+    self_collision: bool = True,
 ) -> None:
     """Pin collar/shoulders and run Blender Cloth physics so real gravity folds form."""
     vg = garment.vertex_groups.new(name="Pin")
@@ -306,21 +307,21 @@ def run_cloth_drape(
 
     cl = garment.modifiers.new("ClothDrape", "CLOTH")
     s = cl.settings
-    s.quality = 10
+    s.quality = 8
     s.mass = mass
     s.tension_stiffness = tension
     s.compression_stiffness = compression
     s.shear_stiffness = tension * 0.45
     s.bending_stiffness = bending
-    s.air_damping = 1.4
+    s.air_damping = 1.5
     s.vertex_group_mass = "Pin"
     if shrink_min > 0.0 and hasattr(s, "shrink_min"):
         s.shrink_min = shrink_min
 
     cl.collision_settings.use_collision = True
     cl.collision_settings.distance_min = 0.005
-    cl.collision_settings.use_self_collision = True
-    cl.collision_settings.self_distance_min = 0.008
+    cl.collision_settings.use_self_collision = self_collision
+    cl.collision_settings.self_distance_min = 0.006
     cl.collision_settings.self_friction = 4.0
 
     sc = bpy.context.scene
@@ -524,7 +525,7 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
             hood_pins[j * n_u + i] = 0.85  # keep throat/collar fold clean without pinching
     for idx in h_pin_verts[n_u:]:
         hood_pins[idx] = max(hood_pins.get(idx, 0.0), 0.55)
-    run_cloth_drape(hood, hood_pins, frames=12, mass=0.28, tension=30.0, compression=22.0, bending=3.5)
+    run_cloth_drape(hood, hood_pins, frames=12, mass=0.28, tension=30.0, compression=22.0, bending=3.5, self_collision=False)
 
     # Solidify Body and Hood outward
     for ob, th in ((body, 0.0034), (hood, 0.0034)):
@@ -731,12 +732,12 @@ def setup_lookdev_studio(obs: List[bpy.types.Object], studio_col) -> None:
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
     sc.cycles.device = "CPU"
-    sc.cycles.samples = 80
+    sc.cycles.samples = 48
     sc.cycles.use_adaptive_sampling = True
-    sc.cycles.adaptive_threshold = 0.015
+    sc.cycles.adaptive_threshold = 0.02
     sc.cycles.use_denoising = False
-    sc.render.resolution_x = 1280
-    sc.render.resolution_y = 760
+    sc.render.resolution_x = 1120
+    sc.render.resolution_y = 665
     sc.render.image_settings.file_format = "PNG"
 
     cam_d = bpy.data.cameras.new("LD_Cam")
