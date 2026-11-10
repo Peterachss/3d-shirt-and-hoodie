@@ -593,8 +593,8 @@ def build_tshirt() -> Tuple[List[SubMesh], Dict[str, MaterialDef]]:
     collar_mesh.material_name = "tshirt_collar_rib"
 
     hem_mesh = build_ribbed_band_from_loop(
-        base_pts=verts[hem_loop],
-        extrude_vec=np.array([0.0, -0.015, 0.0]),
+        base_pts=verts[hem_loop] + np.array([0.0, 0.003, 0.0]),
+        extrude_vec=np.array([0.0, -0.018, 0.0]),
         radial_scale_profile=[1.002, 1.004, 1.001],
         rib_count=0,
         rib_amp=0.0,
@@ -841,8 +841,8 @@ def build_hoodie() -> Tuple[List[SubMesh], Dict[str, MaterialDef]]:
     body_mesh = SubMesh("Hoodie_Body", v_thick, q_thick, np.zeros((0, 3), dtype=np.int32), uv_thick, "hoodie_fleece")
 
     waistband = build_ribbed_band_from_loop(
-        base_pts=verts[hem_loop],
-        extrude_vec=np.array([0.0, -0.068, 0.0]),
+        base_pts=verts[hem_loop] + np.array([0.0, 0.005, 0.0]),
+        extrude_vec=np.array([0.0, -0.073, 0.0]),
         radial_scale_profile=[0.95, 0.91, 0.89, 0.90],
         rib_count=68,
         rib_amp=0.0014,
@@ -852,9 +852,9 @@ def build_hoodie() -> Tuple[List[SubMesh], Dict[str, MaterialDef]]:
     waistband.material_name = "hoodie_rib"
 
     cuff_l_mesh = build_ribbed_band_from_loop(
-        base_pts=verts[cuff_l],
-        extrude_vec=dir_l * 0.062,
-        radial_scale_profile=[0.93, 0.85, 0.82, 0.84],
+        base_pts=verts[cuff_l] - dir_l * 0.005,
+        extrude_vec=dir_l * 0.067,
+        radial_scale_profile=[0.95, 0.86, 0.82, 0.84],
         rib_count=34,
         rib_amp=0.0012,
         thickness=0.0040,
@@ -863,9 +863,9 @@ def build_hoodie() -> Tuple[List[SubMesh], Dict[str, MaterialDef]]:
     cuff_l_mesh.material_name = "hoodie_rib"
 
     cuff_r_mesh = build_ribbed_band_from_loop(
-        base_pts=verts[cuff_r],
-        extrude_vec=dir_r * 0.062,
-        radial_scale_profile=[0.93, 0.85, 0.82, 0.84],
+        base_pts=verts[cuff_r] - dir_r * 0.005,
+        extrude_vec=dir_r * 0.067,
+        radial_scale_profile=[0.95, 0.86, 0.82, 0.84],
         rib_count=34,
         rib_amp=0.0012,
         thickness=0.0040,
@@ -879,8 +879,8 @@ def build_hoodie() -> Tuple[List[SubMesh], Dict[str, MaterialDef]]:
     cords_r = build_drawstring_and_aglet(-1.0, spec)
 
     materials = {
-        "hoodie_fleece": MaterialDef("hoodie_fleece", (0.16, 0.18, 0.21, 1.0), roughness=0.92),
-        "hoodie_rib": MaterialDef("hoodie_rib", (0.14, 0.16, 0.19, 1.0), roughness=0.94),
+        "hoodie_fleece": MaterialDef("hoodie_fleece", (0.09, 0.10, 0.12, 1.0), roughness=0.92),
+        "hoodie_rib": MaterialDef("hoodie_rib", (0.075, 0.085, 0.105, 1.0), roughness=0.94),
         "hoodie_drawstring": MaterialDef("hoodie_drawstring", (0.86, 0.84, 0.80, 1.0), roughness=0.85),
         "hoodie_metal": MaterialDef("hoodie_metal", (0.72, 0.73, 0.75, 1.0), roughness=0.32, metallic=0.88),
     }

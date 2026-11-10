@@ -79,7 +79,7 @@ def enhance_fabric_materials() -> None:
 
         is_metal = "metal" in mat.name.lower()
         if not is_metal:
-            for sock_name, val in [("Sheen Weight", 0.45), ("Sheen", 0.45), ("Sheen Roughness", 0.6)]:
+            for sock_name, val in [("Sheen Weight", 0.25), ("Sheen", 0.25), ("Sheen Roughness", 0.65)]:
                 if sock_name in bsdf.inputs:
                     bsdf.inputs[sock_name].default_value = val
 
@@ -144,8 +144,8 @@ def setup_studio(studio_col) -> None:
     cam_data = bpy.data.cameras.new("Studio_Camera")
     cam_data.lens = 50.0
     cam_obj = bpy.data.objects.new("Studio_Camera", cam_data)
-    cam_obj.location = (0.0, -2.45, 0.56)
-    cam_obj.rotation_euler = (Vector((0.0, 0.0, 0.48)) - Vector(cam_obj.location)).to_track_quat("-Z", "Y").to_euler()
+    cam_obj.location = (0.0, -3.55, 0.64)
+    cam_obj.rotation_euler = (Vector((0.0, 0.0, 0.46)) - Vector(cam_obj.location)).to_track_quat("-Z", "Y").to_euler()
     studio_col.objects.link(cam_obj)
     bpy.context.scene.camera = cam_obj
 
