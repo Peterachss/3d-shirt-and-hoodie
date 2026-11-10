@@ -15,7 +15,11 @@ from pathlib import Path
 from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
-from PIL import Image, ImageDraw
+try:
+    from PIL import Image, ImageDraw
+except ImportError:
+    Image = None
+    ImageDraw = None
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +94,10 @@ def thicken_shell(
     inner_verts = verts + offset_dir * thickness
 
     all_verts = np.vstack([verts, inner_verts])
-    all_uvs = np.vstack([uvs, uvs])
+    inner_uvs = uvs.copy()
+    inner_uvs[:, 0] = (inner_uvs[:, 0] + 0.003) % 1.0
+    inner_uvs[:, 1] = np.clip(inner_uvs[:, 1] + 0.003, 0.0, 1.0)
+    all_uvs = np.vstack([uvs, inner_uvs])
     inner_quads = quads[:, ::-1] + n_verts
 
     rim_quads_list = []
@@ -1022,6 +1029,8 @@ def export_glb(meshes: List[SubMesh], materials: Dict[str, MaterialDef], glb_pat
 # ---------------------------------------------------------------------------
 
 def render_turntable_preview(meshes: List[SubMesh], materials: Dict[str, MaterialDef], out_png: Path) -> None:
+    if Image is None or ImageDraw is None:
+        return
     views = [
         ("Front View", 0.0, 8.0),
         ("Three-Quarter View", 32.0, 14.0),

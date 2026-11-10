@@ -190,6 +190,12 @@ def create_mesh_object(
     for poly in me.polygons:
         poly.use_smooth = True
 
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(me)
+    bm.free()
+
     ob = bpy.data.objects.new(name, me)
     collection.objects.link(ob)
     if material is not None:
@@ -197,9 +203,18 @@ def create_mesh_object(
     return ob
 
 
+def recalc_normals(ob: bpy.types.Object) -> None:
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(ob.data)
+    bm.free()
+
+
 def apply_modifier(ob: bpy.types.Object, mod_name: str) -> None:
     with bpy.context.temp_override(object=ob, active_object=ob, selected_objects=[ob], selected_editable_objects=[ob]):
         bpy.ops.object.modifier_apply(modifier=mod_name)
+    recalc_normals(ob)
 
 
 def build_mannequin_collider(
@@ -411,26 +426,26 @@ def build_tshirt_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     sol.use_rim = True
     apply_modifier(body, sol.name)
 
-    # Ribbed crewneck collar attached directly to settled neck_loop (2mm tuck for zero gap)
+    # Ribbed crewneck collar attached cleanly to settled neck_loop (interlocks body thickness, zero gap/z-fight)
     collar_sub = gb.build_ribbed_band_from_loop(
-        base_pts=settled_yup[neck_loop] - np.array([0.0, 0.003, 0.0]),
-        extrude_vec=np.array([0.0, 0.025, 0.0]),
-        radial_scale_profile=[1.02, 1.038, 1.01, 0.965],
+        base_pts=settled_yup[neck_loop] - np.array([0.0, 0.004, 0.0]),
+        extrude_vec=np.array([0.0, 0.026, 0.0]),
+        radial_scale_profile=[0.995, 1.028, 1.015, 0.975],
         rib_count=48,
         rib_amp=0.0008,
-        thickness=0.0032,
+        thickness=0.0038,
     )
     collar = create_mesh_object("TShirt_Collar", collar_sub.vertices, collar_sub.quads, collar_sub.tris, collar_sub.uvs, col, mats["tshirt_collar_rib"])
     collar.location.x = x_offset
 
-    # Folded bottom hem band attached directly to settled hem_loop
+    # Folded bottom hem band attached directly to settled hem_loop (3.5mm overlap, zero z-fighting)
     hem_sub = gb.build_ribbed_band_from_loop(
         base_pts=settled_yup[hem_loop] + np.array([0.0, 0.004, 0.0]),
         extrude_vec=np.array([0.0, -0.018, 0.0]),
-        radial_scale_profile=[1.003, 1.006, 1.002],
+        radial_scale_profile=[1.008, 1.010, 1.006],
         rib_count=0,
         rib_amp=0.0,
-        thickness=0.0028,
+        thickness=0.0032,
     )
     hem = create_mesh_object("TShirt_Hem", hem_sub.vertices, hem_sub.quads, hem_sub.tris, hem_sub.uvs, col, mats["tshirt_cotton"])
     hem.location.x = x_offset
@@ -516,36 +531,36 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
         sol.use_rim = True
         apply_modifier(ob, sol.name)
 
-    # Ribbed waistband & wrist cuffs built from settled loops
+    # Ribbed waistband & wrist cuffs built from settled loops (clear of z-fighting & interlocked)
     wb_sub = gb.build_ribbed_band_from_loop(
-        base_pts=settled_yup[hem_loop] + np.array([0.0, 0.006, 0.0]),
-        extrude_vec=np.array([0.0, -0.074, 0.0]),
-        radial_scale_profile=[0.95, 0.90, 0.885, 0.895],
+        base_pts=settled_yup[hem_loop] + np.array([0.0, 0.008, 0.0]),
+        extrude_vec=np.array([0.0, -0.076, 0.0]),
+        radial_scale_profile=[0.992, 0.92, 0.895, 0.905],
         rib_count=68,
         rib_amp=0.0015,
-        thickness=0.0042,
+        thickness=0.0046,
     )
     waistband = create_mesh_object("Hoodie_Waistband", wb_sub.vertices, wb_sub.quads, wb_sub.tris, wb_sub.uvs, col, mats["hoodie_rib"])
     waistband.location.x = x_offset
 
     cuff_l_sub = gb.build_ribbed_band_from_loop(
-        base_pts=settled_yup[cuff_l] - settled_cuff_dir(cuff_l, dir_l) * 0.006,
-        extrude_vec=settled_cuff_dir(cuff_l, dir_l) * 0.068,
-        radial_scale_profile=[0.96, 0.86, 0.82, 0.84],
+        base_pts=settled_yup[cuff_l] - settled_cuff_dir(cuff_l, dir_l) * 0.007,
+        extrude_vec=settled_cuff_dir(cuff_l, dir_l) * 0.069,
+        radial_scale_profile=[0.985, 0.87, 0.83, 0.85],
         rib_count=34,
         rib_amp=0.0013,
-        thickness=0.0040,
+        thickness=0.0044,
     )
     cuff_l_ob = create_mesh_object("Hoodie_Cuff_L", cuff_l_sub.vertices, cuff_l_sub.quads, cuff_l_sub.tris, cuff_l_sub.uvs, col, mats["hoodie_rib"])
     cuff_l_ob.location.x = x_offset
 
     cuff_r_sub = gb.build_ribbed_band_from_loop(
-        base_pts=settled_yup[cuff_r] - settled_cuff_dir(cuff_r, dir_r) * 0.006,
-        extrude_vec=settled_cuff_dir(cuff_r, dir_r) * 0.068,
-        radial_scale_profile=[0.96, 0.86, 0.82, 0.84],
+        base_pts=settled_yup[cuff_r] - settled_cuff_dir(cuff_r, dir_r) * 0.007,
+        extrude_vec=settled_cuff_dir(cuff_r, dir_r) * 0.069,
+        radial_scale_profile=[0.985, 0.87, 0.83, 0.85],
         rib_count=34,
         rib_amp=0.0013,
-        thickness=0.0040,
+        thickness=0.0044,
     )
     cuff_r_ob = create_mesh_object("Hoodie_Cuff_R", cuff_r_sub.vertices, cuff_r_sub.quads, cuff_r_sub.tris, cuff_r_sub.uvs, col, mats["hoodie_rib"])
     cuff_r_ob.location.x = x_offset

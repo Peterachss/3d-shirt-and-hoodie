@@ -30,13 +30,14 @@ jobs:
 
       - name: Run Cloth Sim, PBR Shaders, Studio Lookdev & Export
         run: |
-          blender --background --python build_garments_blender.py -- --render
+          blender --background --factory-startup --python-exit-code 1 --python build_garments_blender.py -- --render
           ls -lh shirt_and_hoodie.blend shirt_and_hoodie.glb blender_studio_render.png
 
-      - name: Run blender-asset-qa checks
+      - name: Run blender-asset-qa checks and review sheet
         run: |
-          blender --background shirt_and_hoodie.blend --python .blender-skills/skills/blender-asset-qa/scripts/qa_check.py -- --objects TShirt_Body TShirt_Collar TShirt_Hem --profile render
-          blender --background shirt_and_hoodie.blend --python .blender-skills/skills/blender-asset-qa/scripts/qa_check.py -- --objects Hoodie_Body Hoodie_Waistband Hoodie_Cuff_L Hoodie_Cuff_R Hoodie_Hood Hoodie_KangarooPocket --profile render
+          blender --background --python-exit-code 1 shirt_and_hoodie.blend --python .blender-skills/skills/blender-asset-qa/scripts/qa_check.py -- --objects TShirt_Body TShirt_Collar TShirt_Hem --profile render
+          blender --background --python-exit-code 1 shirt_and_hoodie.blend --python .blender-skills/skills/blender-asset-qa/scripts/qa_check.py -- --objects Hoodie_Body Hoodie_Waistband Hoodie_Cuff_L Hoodie_Cuff_R Hoodie_Hood Hoodie_KangarooPocket --profile render
+          blender --background --python-exit-code 1 shirt_and_hoodie.blend --python .blender-skills/skills/blender-asset-qa/scripts/review_shots.py -- --objects TShirt_Body TShirt_Collar TShirt_Hem Hoodie_Body Hoodie_Waistband Hoodie_Cuff_L Hoodie_Cuff_R Hoodie_Hood Hoodie_KangarooPocket --mode solid --out qa_review.png
 
       - name: Remove temporary blender-skills checkout before commit
         run: rm -rf .blender-skills
@@ -48,17 +49,18 @@ jobs:
           path: |
             shirt_and_hoodie.blend
             blender_studio_render.png
+            qa_review.png
             shirt_and_hoodie.glb
             tshirt.glb
             hoodie.glb
             shirt_and_hoodie.obj
             shirt_and_hoodie.mtl
 
-      - name: Commit built .blend, .glb, .obj and render back to repository
+      - name: Commit built .blend, .glb, .obj and renders back to repository
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add shirt_and_hoodie.blend blender_studio_render.png tshirt.obj tshirt.mtl tshirt.glb hoodie.obj hoodie.mtl hoodie.glb shirt_and_hoodie.obj shirt_and_hoodie.mtl shirt_and_hoodie.glb
+          git add shirt_and_hoodie.blend blender_studio_render.png qa_review.png tshirt.obj tshirt.mtl tshirt.glb hoodie.obj hoodie.mtl hoodie.glb shirt_and_hoodie.obj shirt_and_hoodie.mtl shirt_and_hoodie.glb
           if ! git diff --cached --quiet; then
             git commit -m "Build cloth-simulated shirt_and_hoodie.blend, GLBs, and Cycles render [skip ci]"
             git push
