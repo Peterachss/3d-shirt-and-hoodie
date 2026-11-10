@@ -298,7 +298,7 @@ def run_cloth_drape(
     compression: float,
     bending: float,
     shrink_min: float = 0.0,
-    self_collision: bool = True,
+    self_collision: bool = False,
 ) -> None:
     """Pin collar/shoulders and run Blender Cloth physics so real gravity folds form."""
     vg = garment.vertex_groups.new(name="Pin")
@@ -487,12 +487,13 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     run_cloth_drape(
         body,
         pin_weights,
-        frames=30,
+        frames=28,
         mass=0.34,
         tension=28.0,
         compression=20.0,
         bending=2.1,
-        shrink_min=0.03,
+        shrink_min=0.0,
+        self_collision=False,
     )
 
     settled_yup = np.array([from_bl(v.co) for v in body.data.vertices], dtype=np.float64)
@@ -528,7 +529,7 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     run_cloth_drape(hood, hood_pins, frames=12, mass=0.28, tension=30.0, compression=22.0, bending=3.5, self_collision=False)
 
     # Solidify Body and Hood outward
-    for ob, th in ((body, 0.0034), (hood, 0.0034)):
+    for ob, th in ((body, 0.0034), (hood, 0.0028)):
         sol = ob.modifiers.new("Solidify", "SOLIDIFY")
         sol.thickness = th
         sol.offset = 1.0
@@ -540,14 +541,16 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
         pts = settled_yup[loop_indices].copy()
         c = np.mean(pts, axis=0)
         ax = axis_dir / (np.linalg.norm(axis_dir) + 1e-9)
-        out_pts = np.zeros_like(pts)
-        n = len(pts)
-        for i in range(n):
-            p_avg = 0.25 * pts[(i - 1) % n] + 0.5 * pts[i] + 0.25 * pts[(i + 1) % n]
-            rel = p_avg - c
-            radial = rel - np.dot(rel, ax) * ax
-            out_pts[i] = c + radial
-        return out_pts
+        for _ in range(2):
+            next_pts = np.zeros_like(pts)
+            n = len(pts)
+            for i in range(n):
+                p_avg = 0.25 * pts[(i - 1) % n] + 0.5 * pts[i] + 0.25 * pts[(i + 1) % n]
+                rel = p_avg - c
+                radial = rel - np.dot(rel, ax) * ax
+                next_pts[i] = c + radial
+            pts = next_pts
+        return pts
 
     # Ribbed waistband & wrist cuffs built from settled loops (clear of z-fighting & interlocked)
     wb_sub = gb.build_ribbed_band_from_loop(
@@ -565,10 +568,11 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     cuff_l_sub = gb.build_ribbed_band_from_loop(
         base_pts=smooth_cuff_base(cuff_l, dir_l_settled) - dir_l_settled * 0.001,
         extrude_vec=dir_l_settled * 0.065,
-        radial_scale_profile=[1.055, 0.95, 0.905, 0.915],
-        rib_count=26,
-        rib_amp=0.0005,
-        thickness=0.0036,
+        radial_scale_profile=[1.065, 0.985, 0.945, 0.955],
+        rib_count=16,
+        rib_amp=0.0004,
+        thickness=0.0026,
+        n_fine_override=32,
     )
     cuff_l_ob = create_mesh_object("Hoodie_Cuff_L", cuff_l_sub.vertices, cuff_l_sub.quads, cuff_l_sub.tris, cuff_l_sub.uvs, col, mats["hoodie_rib"])
     cuff_l_ob.location.x = x_offset
@@ -577,10 +581,11 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     cuff_r_sub = gb.build_ribbed_band_from_loop(
         base_pts=smooth_cuff_base(cuff_r, dir_r_settled) - dir_r_settled * 0.001,
         extrude_vec=dir_r_settled * 0.065,
-        radial_scale_profile=[1.055, 0.95, 0.905, 0.915],
-        rib_count=26,
-        rib_amp=0.0005,
-        thickness=0.0036,
+        radial_scale_profile=[1.065, 0.985, 0.945, 0.955],
+        rib_count=16,
+        rib_amp=0.0004,
+        thickness=0.0026,
+        n_fine_override=32,
     )
     cuff_r_ob = create_mesh_object("Hoodie_Cuff_R", cuff_r_sub.vertices, cuff_r_sub.quads, cuff_r_sub.tris, cuff_r_sub.uvs, col, mats["hoodie_rib"])
     cuff_r_ob.location.x = x_offset

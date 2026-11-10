@@ -511,10 +511,11 @@ def build_ribbed_band_from_loop(
     rib_count: int = 36,
     rib_amp: float = 0.0012,
     thickness: float = 0.003,
+    n_fine_override: Optional[int] = None,
 ) -> SubMesh:
     """Build a ribbed closed loop band perpendicular to the extrude axis."""
     n_orig = len(base_pts)
-    n_fine = max(n_orig * 3, rib_count * 2)
+    n_fine = n_fine_override if n_fine_override else max(n_orig * 3, rib_count * 2)
     fine_base = np.zeros((n_fine, 3), dtype=np.float64)
     for i in range(n_fine):
         f = (i / n_fine) * n_orig
