@@ -321,7 +321,7 @@ def run_cloth_drape(
     cl.collision_settings.use_collision = True
     cl.collision_settings.distance_min = 0.005
     cl.collision_settings.use_self_collision = self_collision
-    cl.collision_settings.self_distance_min = 0.006
+    cl.collision_settings.self_distance_min = 0.0075
     cl.collision_settings.self_friction = 4.0
 
     sc = bpy.context.scene
@@ -526,7 +526,7 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
             hood_pins[j * n_u + i] = 0.85  # keep throat/collar fold clean without pinching
     for idx in h_pin_verts[n_u:]:
         hood_pins[idx] = max(hood_pins.get(idx, 0.0), 0.55)
-    run_cloth_drape(hood, hood_pins, frames=12, mass=0.28, tension=30.0, compression=22.0, bending=3.5, self_collision=False)
+    run_cloth_drape(hood, hood_pins, frames=8, mass=0.28, tension=30.0, compression=22.0, bending=4.5, self_collision=False)
 
     # Solidify Body and Hood outward
     for ob, th in ((body, 0.0034), (hood, 0.0028)):
@@ -566,9 +566,9 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
 
     dir_l_settled = settled_cuff_dir(cuff_l, dir_l)
     cuff_l_sub = gb.build_ribbed_band_from_loop(
-        base_pts=smooth_cuff_base(cuff_l, dir_l_settled) - dir_l_settled * 0.001,
-        extrude_vec=dir_l_settled * 0.065,
-        radial_scale_profile=[1.065, 0.985, 0.945, 0.955],
+        base_pts=smooth_cuff_base(cuff_l, dir_l_settled) + dir_l_settled * 0.0005,
+        extrude_vec=dir_l_settled * 0.064,
+        radial_scale_profile=[1.055, 0.980, 0.942, 0.952],
         rib_count=16,
         rib_amp=0.0004,
         thickness=0.0026,
@@ -579,9 +579,9 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
 
     dir_r_settled = settled_cuff_dir(cuff_r, dir_r)
     cuff_r_sub = gb.build_ribbed_band_from_loop(
-        base_pts=smooth_cuff_base(cuff_r, dir_r_settled) - dir_r_settled * 0.001,
-        extrude_vec=dir_r_settled * 0.065,
-        radial_scale_profile=[1.065, 0.985, 0.945, 0.955],
+        base_pts=smooth_cuff_base(cuff_r, dir_r_settled) + dir_r_settled * 0.0005,
+        extrude_vec=dir_r_settled * 0.064,
+        radial_scale_profile=[1.055, 0.980, 0.942, 0.952],
         rib_count=16,
         rib_amp=0.0004,
         thickness=0.0026,
