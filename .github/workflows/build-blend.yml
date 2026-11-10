@@ -1,0 +1,57 @@
+name: Build Blender Scene
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-blend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Blender and Python deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender python3-numpy python3-pil
+          blender --version
+
+      - name: Generate quad meshes (OBJ + GLB)
+        run: |
+          python3 garment_builder.py
+
+      - name: Build .blend scene and Cycles studio render
+        run: |
+          blender --background --python build_garments_blender.py -- --render
+          ls -lh shirt_and_hoodie.blend blender_studio_render.png
+
+      - name: Upload built 3D assets as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: blender-shirt-and-hoodie
+          path: |
+            shirt_and_hoodie.blend
+            blender_studio_render.png
+            shirt_and_hoodie.glb
+            tshirt.glb
+            hoodie.glb
+            shirt_and_hoodie.obj
+            shirt_and_hoodie.mtl
+
+      - name: Commit built .blend and studio render back to repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add shirt_and_hoodie.blend blender_studio_render.png tshirt.obj tshirt.mtl tshirt.glb hoodie.obj hoodie.mtl hoodie.glb shirt_and_hoodie.obj shirt_and_hoodie.mtl shirt_and_hoodie.glb preview_render.png
+          if ! git diff --cached --quiet; then
+            git commit -m "Build shirt_and_hoodie.blend and Cycles render [skip ci]"
+            git push
+          else
+            echo "No changes to commit."
+          fi
