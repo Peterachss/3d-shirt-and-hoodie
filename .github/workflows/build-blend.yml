@@ -41,6 +41,7 @@ jobs:
             ["TShirt_Body", "TShirt_Collar", "TShirt_Hem"],
             ["Hoodie_Body", "Hoodie_Waistband", "Hoodie_Cuff_L", "Hoodie_Cuff_R", "Hoodie_Hood", "Hoodie_KangarooPocket"],
           ]
+          all_ok = True
           for objs in checks:
             cmd = [
               "blender", "--background", "--python-exit-code", "1", "shirt_and_hoodie.blend",
@@ -52,7 +53,9 @@ jobs:
             data = json.loads(lines[-1].replace("@@JSON@@", "", 1))
             print(objs[0], "pass=", data["pass"], "errors=", data["errors"])
             if not data["pass"]:
-              sys.exit(1)
+              all_ok = False
+          if not all_ok:
+            sys.exit(1)
           PY
 
       - name: Remove temporary blender-skills checkout before commit

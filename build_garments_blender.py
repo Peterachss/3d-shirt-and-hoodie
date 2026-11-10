@@ -416,7 +416,7 @@ def build_tshirt_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
         if pt[1] > 0.645 and abs(pt[2]) < 0.045:
             pin_weights[idx] = 0.70
 
-    run_cloth_drape(body, pin_weights, frames=26, mass=0.18, tension=20.0, compression=14.0, bending=0.75)
+    run_cloth_drape(body, pin_weights, frames=24, mass=0.18, tension=20.0, compression=14.0, bending=0.75, self_collision=True)
 
     # Read settled world/local vertices before Solidify
     settled_yup = np.array([from_bl(v.co) for v in body.data.vertices], dtype=np.float64)
@@ -487,13 +487,13 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     run_cloth_drape(
         body,
         pin_weights,
-        frames=28,
+        frames=24,
         mass=0.34,
         tension=28.0,
         compression=20.0,
         bending=2.1,
         shrink_min=0.0,
-        self_collision=False,
+        self_collision=True,
     )
 
     settled_yup = np.array([from_bl(v.co) for v in body.data.vertices], dtype=np.float64)
