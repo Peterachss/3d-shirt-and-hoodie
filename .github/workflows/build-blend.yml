@@ -38,7 +38,7 @@ jobs:
           python3 - <<'PY'
           import json, subprocess, sys
           checks = [
-            ["TShirt_Body", "TShirt_Collar", "TShirt_Hem", "TShirt_SleeveHem_L", "TShirt_SleeveHem_R"],
+            ["TShirt_Body", "TShirt_Collar", "TShirt_Hem"],
             ["Hoodie_Body", "Hoodie_Waistband", "Hoodie_Cuff_L", "Hoodie_Cuff_R", "Hoodie_Hood", "Hoodie_KangarooPocket"],
           ]
           all_ok = True
