@@ -367,11 +367,11 @@ def build_mannequin_collider(
         neck_rx=spec.neck_rx - 0.012,
         neck_rz_front=spec.neck_rz_front - 0.012,
         neck_rz_back=spec.neck_rz_back - 0.010,
-        sleeve_len=spec.sleeve_len * 0.985,
-        sleeve_drop_deg=spec.sleeve_drop_deg + 1.5,
+        sleeve_len=spec.sleeve_len * 0.992,
+        sleeve_drop_deg=spec.sleeve_drop_deg + 0.4,
         sleeve_fwd_deg=spec.sleeve_fwd_deg,
-        sleeve_end_rx=spec.sleeve_end_rx - ease_shrink * 0.85,
-        sleeve_end_rz=spec.sleeve_end_rz - ease_shrink * 0.85,
+        sleeve_end_rx=spec.sleeve_end_rx - ease_shrink * 0.55,
+        sleeve_end_rz=spec.sleeve_end_rz - ease_shrink * 0.55,
         elbow_bend=spec.elbow_bend,
         is_hoodie=False,
         thickness=0.0,
@@ -578,48 +578,47 @@ def build_conformed_decal_patch(
             u = i / max(1, nu - 1)
             x = (x_span[0] + (x_span[1] - x_span[0]) * u) if is_front else (x_span[1] - (x_span[1] - x_span[0]) * u)
             seed_bl = Vector((x, z_seed, y))
-            ok, loc, norm, _ = body_obj.closest_point_on_mesh(seed_bl)
+            ok, loc, _, _ = body_obj.closest_point_on_mesh(seed_bl)
             if ok:
-                n = Vector(norm).normalized()
-                if is_front and n.y > 0.0:
-                    n = -n
-                elif (not is_front) and n.y < 0.0:
-                    n = -n
-                pt_bl = Vector(loc) + n * offset_m
-                ring[i] = from_bl(pt_bl)
+                z_surf = -loc.y
+                ring[i] = [x, y, z_surf + (offset_m if is_front else -offset_m)]
             else:
                 ring[i] = [x, y, 0.14 if is_front else -0.14]
             uvs[j * nu + i] = [u, v]
         rings.append(ring)
 
-    # Smooth interior grid with 12 passes so decal forms a taut, wrinkle-free chest/back print surface
-    for _ in range(12):
-        next_rings = [rings[0].copy()]
-        for j in range(1, nv - 1):
-            r_row = 0.25 * rings[j - 1] + 0.5 * rings[j] + 0.25 * rings[j + 1]
-            r_sm = r_row.copy()
-            for i in range(1, nu - 1):
-                r_sm[i] = 0.25 * r_row[i - 1] + 0.5 * r_row[i] + 0.25 * r_row[i + 1]
-            next_rings.append(r_sm)
-        next_rings.append(rings[-1].copy())
+    # Smooth only Z (depth) so X and Y stay a 100% uniform grid (zero duplicate verts or degenerate faces)
+    for _ in range(10):
+        next_rings = [r.copy() for r in rings]
+        for j in range(nv):
+            j_prev = max(0, j - 1)
+            j_next = min(nv - 1, j + 1)
+            for i in range(nu):
+                i_prev = max(0, i - 1)
+                i_next = min(nu - 1, i + 1)
+                next_rings[j][i, 2] = (
+                    0.44 * rings[j][i, 2]
+                    + 0.14 * (rings[j_prev][i, 2] + rings[j_next][i, 2] + rings[j][i_prev, 2] + rings[j][i_next, 2])
+                )
         rings = next_rings
 
-    # Seat outer perimeter within 1.4mm of body_obj (contacts mesh for QA within 2mm tol) while interior clears by offset_m
+    # Seat outer perimeter within 1.4mm of body_obj along Z only while keeping X/Y spacing uniform
     for j in range(nv):
         for i in range(nu):
             is_border = j == 0 or j == nv - 1 or i == 0 or i == nu - 1
             target_d = 0.0014 if is_border else offset_m
             p_bl = Vector(to_bl(rings[j][i]))
-            ok, loc, norm, _ = body_obj.closest_point_on_mesh(p_bl)
+            ok, loc, _, _ = body_obj.closest_point_on_mesh(p_bl)
             if ok:
-                n = Vector(norm).normalized()
-                if is_front and n.y > 0.0:
-                    n = -n
-                elif (not is_front) and n.y < 0.0:
-                    n = -n
-                signed_d = (p_bl - Vector(loc)).dot(n)
-                if is_border or signed_d < target_d:
-                    rings[j][i] = from_bl(Vector(loc) + n * target_d)
+                z_surf = -loc.y
+                if is_front:
+                    z_target = z_surf + target_d
+                    if is_border or rings[j][i][2] < z_target:
+                        rings[j][i][2] = z_target
+                else:
+                    z_target = z_surf - target_d
+                    if is_border or rings[j][i][2] > z_target:
+                        rings[j][i][2] = z_target
 
     verts, quads, _, _ = gb.make_tube_mesh(rings, closed_u=False)
     if not is_front:
@@ -683,50 +682,30 @@ def build_sleeve_flag_patch(
     uvs = np.zeros((nu * nv, 2), dtype=np.float64)
     for j in range(nv):
         v = j / (nv - 1)
-        y = 0.502 + 0.036 * v
+        y = 0.485 + 0.034 * v
         ring = np.zeros((nu, 3), dtype=np.float64)
         for i in range(nu):
             u = i / (nu - 1)
-            x = 0.285 - 0.015 * v + (u - 0.5) * 0.046
-            z_front = 0.095
-            seed_bl = Vector((x + 0.02, -z_front - 0.12, y))
-            ok, loc, norm, _ = body_obj.closest_point_on_mesh(seed_bl)
-            if ok:
-                n = Vector(norm).normalized()
-                if n.y > 0.0:
-                    n = -n
-                pt_bl = Vector(loc) + n * 0.0022
-                ring[i] = from_bl(pt_bl)
-            else:
-                ring[i] = [x, y, z_front]
+            x = 0.308 - 0.022 * v + (u - 0.5) * 0.044
+            seed_bl = Vector((x, -0.25, y))
+            ok, loc, _, _ = body_obj.closest_point_on_mesh(seed_bl)
+            is_border = j == 0 or j == nv - 1 or i == 0 or i == nu - 1
+            off = 0.0005 if is_border else 0.0022
+            z_surf = (-loc.y) if ok else 0.070
+            ring[i] = [x, y, z_surf + off]
             uvs[j * nu + i] = [u, v]
         rings.append(ring)
 
-    # Smooth interior & perimeter so adjacent sleeve flag vertices never collapse
-    for _ in range(4):
-        next_rings = [rings[0].copy()]
+    # Smooth only interior Z (depth) while keeping perimeter vertices at 0.5mm contact with TShirt_Body
+    for _ in range(3):
+        next_rings = [r.copy() for r in rings]
         for j in range(1, nv - 1):
-            r_row = 0.25 * rings[j - 1] + 0.5 * rings[j] + 0.25 * rings[j + 1]
-            r_sm = r_row.copy()
             for i in range(1, nu - 1):
-                r_sm[i] = 0.25 * r_row[i - 1] + 0.5 * r_row[i] + 0.25 * r_row[i + 1]
-            next_rings.append(r_sm)
-        next_rings.append(rings[-1].copy())
+                next_rings[j][i, 2] = (
+                    0.5 * rings[j][i, 2]
+                    + 0.125 * (rings[j - 1][i, 2] + rings[j + 1][i, 2] + rings[j][i - 1, 2] + rings[j][i + 1, 2])
+                )
         rings = next_rings
-
-    for j in range(nv):
-        for i in range(nu):
-            is_border = j == 0 or j == nv - 1 or i == 0 or i == nu - 1
-            target_d = 0.0014 if is_border else 0.0022
-            p_bl = Vector(to_bl(rings[j][i]))
-            ok, loc, norm, _ = body_obj.closest_point_on_mesh(p_bl)
-            if ok:
-                n = Vector(norm).normalized()
-                if n.y > 0.0:
-                    n = -n
-                signed_d = (p_bl - Vector(loc)).dot(n)
-                if is_border or signed_d < target_d:
-                    rings[j][i] = from_bl(Vector(loc) + n * target_d)
 
     verts, quads, _, _ = gb.make_tube_mesh(rings, closed_u=False)
     bot_loop = list(range(0, nu))
@@ -782,26 +761,32 @@ def build_tshirt_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     body = create_mesh_object("TShirt_Body", verts, quads, np.zeros((0, 3), dtype=np.int32), uvs, col, mats["tshirt_cotton"])
     body.location.x = x_offset
 
-    # Pin neck + upper shoulder slope + light cuff support so short sleeves hang tailored and round
+    # Pin neck + upper shoulder slope + cuff support so short sleeves stay crisp and round
     pin_weights: Dict[int, float] = {}
     for idx in neck_loop:
         pin_weights[idx] = 1.0
+    for idx in hem_loop:
+        pin_weights[idx] = 0.88
     for idx in cuff_l + cuff_r:
-        pin_weights[idx] = 0.34
+        pin_weights[idx] = 0.88
     for idx, pt in enumerate(verts):
         if idx in pin_weights:
             continue
-        if pt[1] > 0.640 and abs(pt[2]) < 0.045:
-            pin_weights[idx] = 0.75
+        if abs(pt[0]) > 0.20:
+            pin_weights[idx] = 0.82
+        elif pt[1] > 0.620:
+            pin_weights[idx] = 0.88
+        else:
+            pin_weights[idx] = 0.35
 
-    run_cloth_drape(body, pin_weights, frames=12, mass=0.18, tension=26.0, compression=20.0, bending=1.85, self_collision=True)
+    run_cloth_drape(body, pin_weights, frames=5, mass=0.18, tension=36.0, compression=30.0, bending=4.8, self_collision=True)
 
     # Read settled world/local vertices before Solidify
     settled_yup = np.array([from_bl(v.co) for v in body.data.vertices], dtype=np.float64)
 
-    # Solidify outward (real 3.4mm fabric thickness) + apply so QA & GLB are watertight
+    # Solidify outward (real 3.6mm fabric thickness) + apply so QA & GLB are watertight
     sol = body.modifiers.new("Solidify", "SOLIDIFY")
-    sol.thickness = 0.0034
+    sol.thickness = 0.0036
     sol.offset = 1.0
     sol.use_rim = True
     apply_modifier(body, sol.name)
@@ -869,23 +854,27 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     for idx in neck_loop:
         pin_weights[idx] = 1.0
     for idx in hem_loop:
-        pin_weights[idx] = 0.85
+        pin_weights[idx] = 0.88
     for idx in cuff_l + cuff_r:
-        pin_weights[idx] = 0.62
+        pin_weights[idx] = 0.86
     for idx, pt in enumerate(verts):
         if idx in pin_weights:
             continue
-        if pt[1] > 0.61 and abs(pt[2]) < 0.055:
-            pin_weights[idx] = 0.78
+        if abs(pt[0]) > 0.23:
+            pin_weights[idx] = 0.84
+        elif pt[1] > 0.60:
+            pin_weights[idx] = 0.88
+        else:
+            pin_weights[idx] = 0.32
 
     run_cloth_drape(
         body,
         pin_weights,
-        frames=10,
+        frames=5,
         mass=0.34,
-        tension=34.0,
-        compression=26.0,
-        bending=4.5,
+        tension=40.0,
+        compression=32.0,
+        bending=6.5,
         shrink_min=0.0,
         self_collision=True,
     )

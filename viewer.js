@@ -35,31 +35,31 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "hi
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(host.clientWidth, host.clientHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.04;
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 0.94;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 host.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xebe5df);
+scene.background = new THREE.Color(0xe6dfd7);
 
 const pmrem = new THREE.PMREMGenerator(renderer);
 const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environment = envTex;
-scene.environmentIntensity = 0.52;
+scene.environmentIntensity = 0.34;
 
-const camera = new THREE.PerspectiveCamera(34, host.clientWidth / Math.max(1, host.clientHeight), 0.12, 30);
+const camera = new THREE.PerspectiveCamera(26, host.clientWidth / Math.max(1, host.clientHeight), 0.12, 30);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.07;
 controls.minDistance = 0.7;
-controls.maxDistance = 9.0;
+controls.maxDistance = 12.0;
 controls.maxPolarAngle = Math.PI * 0.56;
 
-// Studio lighting calibrated for warm taupe presentation board look
-const keyLight = new THREE.DirectionalLight(0xfffcf5, 2.15);
-keyLight.position.set(2.4, 3.4, 3.2);
+// Studio lighting calibrated for crisp fold definition on both dark and pastel/cream colorways
+const keyLight = new THREE.DirectionalLight(0xfffcf5, 1.55);
+keyLight.position.set(2.8, 3.6, 2.8);
 keyLight.castShadow = true;
 keyLight.shadow.mapSize.set(2048, 2048);
 keyLight.shadow.camera.near = 0.5;
@@ -71,15 +71,15 @@ keyLight.shadow.camera.bottom = -2.4;
 keyLight.shadow.bias = -0.0005;
 scene.add(keyLight);
 
-const fillLight = new THREE.DirectionalLight(0xf3f6fa, 0.95);
-fillLight.position.set(-2.8, 1.9, 2.4);
+const fillLight = new THREE.DirectionalLight(0xf3f6fa, 0.55);
+fillLight.position.set(-2.8, 1.8, 2.2);
 scene.add(fillLight);
 
-const rimLight = new THREE.DirectionalLight(0xfffcf8, 1.35);
-rimLight.position.set(0.0, 2.5, -3.4);
+const rimLight = new THREE.DirectionalLight(0xfffcf8, 0.95);
+rimLight.position.set(0.0, 2.6, -3.4);
 scene.add(rimLight);
 
-const hemiLight = new THREE.HemisphereLight(0xffffff, 0xd8cfc8, 0.50);
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0xcabfb4, 0.36);
 scene.add(hemiLight);
 
 const floor = new THREE.Mesh(
@@ -271,6 +271,12 @@ function setCameraTarget(presetKey, immediate = false) {
 function styleGarmentMaterial(mat, meshName, colorHex, contrast, fabricKind) {
   if (!mat || !mat.name) return;
   const baseCol = new THREE.Color(colorHex);
+  // Slightly deepen light fabrics so studio highlights never blow out Cream or Pastel Pink
+  const hsl = { h: 0, s: 0, l: 0 };
+  baseCol.getHSL(hsl);
+  if (hsl.l > 0.65) {
+    baseCol.setHSL(hsl.h, Math.min(1.0, hsl.s * 1.18), hsl.l * 0.88);
+  }
   const ribCol = baseCol.clone().multiplyScalar(0.92);
   const preset = FABRIC_PRESETS[fabricKind] || FABRIC_PRESETS.loopback;
   const nTex = getFabricNormalTexture(fabricKind);
@@ -280,7 +286,7 @@ function styleGarmentMaterial(mat, meshName, colorHex, contrast, fabricKind) {
     mat.roughness = preset.roughness;
     mat.sheen = preset.sheen;
     mat.sheenRoughness = preset.sheenRoughness;
-    mat.sheenColor.copy(baseCol).lerp(new THREE.Color(0xffffff), 0.14);
+    mat.sheenColor.copy(baseCol).lerp(new THREE.Color(0xffffff), 0.08);
     mat.normalMap = nTex;
     mat.normalScale.set(preset.normalScale, preset.normalScale);
   } else if (mat.name === "tshirt_collar_rib" || mat.name === "hoodie_rib") {
@@ -288,21 +294,30 @@ function styleGarmentMaterial(mat, meshName, colorHex, contrast, fabricKind) {
     mat.roughness = Math.min(0.97, preset.roughness + 0.03);
     mat.sheen = preset.sheen * 0.85;
     mat.sheenRoughness = preset.sheenRoughness;
-    mat.sheenColor.copy(ribCol).lerp(new THREE.Color(0xffffff), 0.10);
+    mat.sheenColor.copy(ribCol).lerp(new THREE.Color(0xffffff), 0.06);
     mat.normalMap = nTex;
     mat.normalScale.set(preset.normalScale * 1.15, preset.normalScale * 1.15);
   } else if (meshName.includes("Decal_Front")) {
     mat.map = meshName.startsWith("Hoodie") ? decalTextures.hoodie_front : decalTextures.shirt_front;
+    mat.color.setHex(0xffffff);
+    mat.roughness = 0.85;
+    mat.metalness = 0.0;
     mat.transparent = true;
     mat.alphaTest = 0.08;
     mat.depthWrite = false;
   } else if (meshName.includes("Decal_Back")) {
     mat.map = contrast === "dark" ? decalTextures.back_dark : decalTextures.back_light;
+    mat.color.setHex(0xffffff);
+    mat.roughness = 0.85;
+    mat.metalness = 0.0;
     mat.transparent = true;
     mat.alphaTest = 0.08;
     mat.depthWrite = false;
   } else if (meshName.includes("Decal_SleeveFlag")) {
     mat.map = decalTextures.vn_flag;
+    mat.color.setHex(0xffffff);
+    mat.roughness = 0.85;
+    mat.metalness = 0.0;
     mat.transparent = true;
     mat.alphaTest = 0.08;
     mat.depthWrite = false;
@@ -374,7 +389,7 @@ function buildLineupScene() {
 
   const tDx = centerOffsetFor(tshirtNodes);
   const hDx = centerOffsetFor(hoodieNodes);
-  const colSpacing = 0.88;
+  const colSpacing = 0.96;
   const startX = -1.5 * colSpacing;
 
   CHAM_COLORWAYS.forEach((cw, idx) => {
@@ -388,6 +403,8 @@ function buildLineupScene() {
       clone.material = cloneMat;
       clone.position.x = (originalPosX.get(srcMesh) ?? 0) + hDx + colX;
       clone.position.y += 0.36;
+      clone.castShadow = false;
+      clone.receiveShadow = false;
       lineupGroup.add(clone);
       lineupInstances.push({
         mesh: clone,
@@ -406,6 +423,8 @@ function buildLineupScene() {
       clone.material = cloneMat;
       clone.position.x = (originalPosX.get(srcMesh) ?? 0) + tDx + colX;
       clone.position.y -= 0.44;
+      clone.castShadow = false;
+      clone.receiveShadow = false;
       lineupGroup.add(clone);
       lineupInstances.push({
         mesh: clone,
@@ -422,7 +441,8 @@ function applyGarmentSelection(immediate = false) {
   const isLineup = state.garment === "lineup";
   rootGroup.visible = !isLineup;
   lineupGroup.visible = isLineup;
-  floor.position.y = isLineup ? -0.46 : -0.002;
+  floor.visible = !isLineup;
+  floor.position.y = -0.002;
 
   if (!isLineup) {
     for (const n of tshirtNodes) {

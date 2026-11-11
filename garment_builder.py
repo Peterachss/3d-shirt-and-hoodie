@@ -427,8 +427,27 @@ def build_torso_and_sleeves(spec: GarmentSpec) -> Tuple[
         up_vec = np.cross(fwd_vec, axis_dir) if side_sign > 0 else np.cross(axis_dir, fwd_vec)
         up_vec /= np.linalg.norm(up_vec)
 
-        angles = [math.atan2(np.dot(p - arm_center, up_vec), np.dot(p - arm_center, fwd_vec)) for p in arm_pts]
-        n_sleeve_rings = 16 if spec.is_hoodie else 10
+        # Compute cumulative arc-length parameter around arm_loop so sleeve rings are 100% evenly spaced
+        # (eliminating longitudinal creases caused by non-uniform atan2 angles on the vertical armhole)
+        seg_lens = [np.linalg.norm(arm_pts[(i + 1) % n_seg] - arm_pts[i]) for i in range(n_seg)]
+        total_len = sum(seg_lens) + 1e-9
+        cum_len = 0.0
+        raw_angles = []
+        for i in range(n_seg):
+            raw_angles.append((cum_len / total_len) * 2.0 * math.pi)
+            cum_len += seg_lens[i]
+
+        # Align phase offset with anatomical angle at the top of the shoulder so sleeve never twists
+        top_idx = int(np.argmax(arm_pts[:, 1]))
+        anat_top = math.atan2(np.dot(arm_pts[top_idx] - arm_center, up_vec), np.dot(arm_pts[top_idx] - arm_center, fwd_vec))
+        # Determine winding sign around sleeve axis
+        next_idx = (top_idx + 4) % n_seg
+        anat_next = math.atan2(np.dot(arm_pts[next_idx] - arm_center, up_vec), np.dot(arm_pts[next_idx] - arm_center, fwd_vec))
+        d_anat = math.atan2(math.sin(anat_next - anat_top), math.cos(anat_next - anat_top))
+        wind_sign = 1.0 if d_anat >= 0.0 else -1.0
+        angles = [anat_top + wind_sign * (ang - raw_angles[top_idx]) for ang in raw_angles]
+
+        n_sleeve_rings = 18 if spec.is_hoodie else 12
 
         prev_ring = arm_loop
         last_center = arm_center
@@ -438,25 +457,29 @@ def build_torso_and_sleeves(spec: GarmentSpec) -> Tuple[
             t = s_step / n_sleeve_rings
             bend = math.sin(t * math.pi) * spec.elbow_bend
             ring_center = arm_center + axis_dir * (spec.sleeve_len * t) + np.array([0.0, 0.0, bend])
-            ring_center[1] -= 0.007 * math.sin(t * math.pi)
 
             cur_ring: List[int] = []
             for i in range(n_seg):
                 p0 = arm_pts[i]
                 ang = angles[i]
+                # Full plush mid-sleeve contour for 350 GSM loopback knit hoodie; tailored cylindrical sleeve for sports shirt
+                mid_swell = (1.0 + 0.16 * math.sin(t * math.pi)) if spec.is_hoodie else (1.0 + 0.05 * math.sin(t * math.pi))
                 cuff_pt = (
                     ring_center
-                    + fwd_vec * (spec.sleeve_end_rz * math.cos(ang))
-                    + up_vec * (spec.sleeve_end_rx * math.sin(ang))
+                    + fwd_vec * (spec.sleeve_end_rz * mid_swell * math.cos(ang))
+                    + up_vec * (spec.sleeve_end_rx * mid_swell * math.sin(ang))
                 )
                 p_start_shifted = p0 + (ring_center - arm_center)
-                ease = smoothstep(0.0, 0.88, t)
+                # Transition immediately into the smooth elliptical sleeve cylinder so armhole corners never create longitudinal ridges
+                ease = smoothstep(0.0, 0.22, t)
                 pt = p_start_shifted * (1.0 - ease) + cuff_pt * ease
 
-                if spec.is_hoodie and t > 0.58:
-                    stack = 0.0040 * math.sin((t - 0.58) * 24.0) * math.sin(ang * 2.0 + 0.7)
+                # Gentle horizontal gathering above the hoodie rib cuff
+                if spec.is_hoodie and t > 0.72:
+                    u_cuff = (t - 0.72) / 0.28
+                    puff = 0.0055 * math.sin(u_cuff * math.pi)
                     radial = pt - ring_center
-                    pt = pt + radial / (np.linalg.norm(radial) + 1e-6) * stack
+                    pt = pt + radial / (np.linalg.norm(radial) + 1e-6) * puff
 
                 idx = len(vert_list)
                 vert_list.append(pt)
@@ -560,7 +583,7 @@ def get_tshirt_spec() -> GarmentSpec:
         arm_bot_y=0.455,
         chest_y=0.49,
         arm_top_y=0.648,
-        neck_front_y=0.632,
+        neck_front_y=0.636,
         neck_back_y=0.706,
         neck_side_y=0.716,
         rx_hem=0.236,
@@ -571,13 +594,13 @@ def get_tshirt_spec() -> GarmentSpec:
         rz_waist=0.104,
         rz_chest=0.122,
         neck_rx=0.088,
-        neck_rz_front=0.084,
+        neck_rz_front=0.082,
         neck_rz_back=0.072,
-        sleeve_len=0.175,
-        sleeve_drop_deg=56.0,
-        sleeve_fwd_deg=4.0,
-        sleeve_end_rx=0.078,
-        sleeve_end_rz=0.068,
+        sleeve_len=0.205,
+        sleeve_drop_deg=50.0,
+        sleeve_fwd_deg=2.5,
+        sleeve_end_rx=0.094,
+        sleeve_end_rz=0.086,
         elbow_bend=0.0,
         is_hoodie=False,
         thickness=0.0026,
@@ -605,11 +628,11 @@ def get_hoodie_spec() -> GarmentSpec:
         neck_rz_front=0.090,
         neck_rz_back=0.078,
         sleeve_len=0.515,
-        sleeve_drop_deg=70.5,
-        sleeve_fwd_deg=6.0,
-        sleeve_end_rx=0.066,
-        sleeve_end_rz=0.062,
-        elbow_bend=0.018,
+        sleeve_drop_deg=71.0,
+        sleeve_fwd_deg=5.0,
+        sleeve_end_rx=0.082,
+        sleeve_end_rz=0.074,
+        elbow_bend=0.014,
         is_hoodie=True,
         thickness=0.0038,
     )
