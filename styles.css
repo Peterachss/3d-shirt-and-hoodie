@@ -101,9 +101,16 @@ a {
   text-wrap: balance;
 }
 
-.brand svg {
-  color: var(--accent);
+.brand-crest {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
   flex-shrink: 0;
+  object-fit: cover;
+}
+
+.segmented-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .status-pill {
@@ -203,7 +210,7 @@ a {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-columns: 268px minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -239,6 +246,10 @@ a {
   background: var(--ground);
   border: 1px solid var(--border);
   border-radius: 8px;
+}
+
+.segmented.segmented-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .seg-btn {

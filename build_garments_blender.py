@@ -30,6 +30,7 @@ if str(FOLDER) not in sys.path:
     sys.path.insert(0, str(FOLDER))
 
 import garment_builder as gb  # noqa: E402
+import cham_graphics as cg  # noqa: E402
 
 
 def to_bl(pt) -> Tuple[float, float, float]:
@@ -99,7 +100,22 @@ def generate_fabric_normal_png(path: Path, style: str, size: int = 256) -> bpy.t
     rng = np.random.default_rng(42 if style == "cotton_jersey" else (77 if style == "heavy_fleece" else 99))
     micro_grain = rng.normal(0.0, 0.08, size=(size, size))
 
-    if style == "cotton_jersey":
+    if style == "breathable_mesh":
+        # 160 GSM Breathable Mesh (Vai thun me): staggered birdseye pinhole dimples + fine athletic knit
+        row_a = np.exp(-(((np.sin(np.pi * 28.0 * uu) ** 2) + (np.sin(np.pi * 28.0 * vv) ** 2)) / 0.18))
+        row_b = np.exp(-(((np.cos(np.pi * 28.0 * uu) ** 2) + (np.cos(np.pi * 28.0 * vv) ** 2)) / 0.18))
+        knit = 0.22 * np.sin(2.0 * np.pi * 56.0 * uu) * np.cos(2.0 * np.pi * 56.0 * vv)
+        h = -0.65 * (row_a + row_b) + knit + micro_grain * 0.65
+        strength = 0.62
+    elif style == "loopback_knit":
+        # 350 GSM Loopback Knit (Vai chan cua): fine diagonal French terry / loopback jersey wales
+        h = (
+            0.42 * np.sin(2.0 * np.pi * 44.0 * (uu + 0.5 * vv))
+            + 0.28 * np.sin(2.0 * np.pi * 44.0 * uu) * np.cos(2.0 * np.pi * 44.0 * vv)
+            + micro_grain * 1.1
+        )
+        strength = 0.48
+    elif style == "cotton_jersey":
         # Ultra-fine interlocked combed cotton knit
         h = (
             0.40 * np.sin(2.0 * math.pi * 48.0 * uu + 0.45 * np.sin(2.0 * math.pi * 48.0 * vv))
@@ -146,14 +162,17 @@ def generate_fabric_normal_png(path: Path, style: str, size: int = 256) -> bpy.t
 
 
 def build_pbr_materials() -> Dict[str, bpy.types.Material]:
-    """Create physically plausible PBR fabric & metal materials with packed normal maps (glTF + Cycles ready)."""
+    """Create physically plausible PBR fabric & graphic decal materials with packed textures (glTF + Cycles ready)."""
     mats: Dict[str, bpy.types.Material] = {}
     tex_dir = FOLDER / "textures"
+    decal_paths = cg.build_all_cham_textures(tex_dir)
+
     normal_imgs = {
+        "mesh": generate_fabric_normal_png(tex_dir / "t_fabric_mesh_n.png", "breathable_mesh"),
+        "loopback": generate_fabric_normal_png(tex_dir / "t_fabric_loopback_n.png", "loopback_knit"),
         "cotton": generate_fabric_normal_png(tex_dir / "t_fabric_cotton_n.png", "cotton_jersey"),
         "rib": generate_fabric_normal_png(tex_dir / "t_fabric_rib_n.png", "rib_knit"),
         "fleece": generate_fabric_normal_png(tex_dir / "t_fabric_fleece_n.png", "heavy_fleece"),
-        "cord": generate_fabric_normal_png(tex_dir / "t_fabric_cord_n.png", "cord"),
     }
 
     def make_fabric(
@@ -200,20 +219,48 @@ def build_pbr_materials() -> Dict[str, bpy.types.Material]:
 
         mats[name] = mat
 
-    # Linear albedo values calibrated for AgX contrast & crisp fold sculpting
-    make_fabric("tshirt_cotton", (0.54, 0.52, 0.48, 1.0), 0.86, sheen=0.16, sheen_rough=0.60, normal_key="cotton", normal_strength=0.18, uv_tile=26.0)
-    make_fabric("tshirt_collar_rib", (0.48, 0.46, 0.42, 1.0), 0.88, sheen=0.14, sheen_rough=0.62, normal_key="rib", normal_strength=0.32, uv_tile=20.0)
-    make_fabric("hoodie_fleece", (0.044, 0.049, 0.058, 1.0), 0.90, sheen=0.15, sheen_rough=0.56, normal_key="fleece", normal_strength=0.22, uv_tile=28.0)
-    make_fabric("hoodie_rib", (0.032, 0.036, 0.044, 1.0), 0.92, sheen=0.14, sheen_rough=0.58, normal_key="rib", normal_strength=0.34, uv_tile=20.0)
-    make_fabric("hoodie_drawstring", (0.64, 0.61, 0.56, 1.0), 0.84, sheen=0.16, sheen_rough=0.58, normal_key="cord", normal_strength=0.28, uv_tile=10.0)
+    def make_decal_material(name: str, png_path: Path, normal_key: str, normal_strength: float = 0.14):
+        mat = bpy.data.materials.new(name)
+        ensure_material_nodes(mat)
+        mat.blend_method = "CLIP" if hasattr(mat, "blend_method") else "BLEND"
+        nt = mat.node_tree
+        bsdf = find_principled(mat)
+        set_input(bsdf, ("Metallic",), 0.0)
+        set_input(bsdf, ("Roughness",), 0.85)
+        set_input(bsdf, ("Specular IOR Level",), 0.0)
+        set_input(bsdf, ("Sheen Weight", "Sheen"), 0.0)
 
-    metal = bpy.data.materials.new("hoodie_metal")
-    ensure_material_nodes(metal)
-    m_bsdf = find_principled(metal)
-    set_input(m_bsdf, ("Base Color",), (0.66, 0.68, 0.71, 1.0))
-    set_input(m_bsdf, ("Metallic",), 1.0)
-    set_input(m_bsdf, ("Roughness",), 0.22)
-    mats["hoodie_metal"] = metal
+        img = bpy.data.images.load(str(png_path), check_existing=True)
+        img.colorspace_settings.name = "sRGB"
+        img.pack()
+
+        tex_img = nt.nodes.new("ShaderNodeTexImage")
+        tex_img.location = (-480, 140)
+        tex_img.image = img
+        tex_img.extension = "CLIP"
+        nt.links.new(tex_img.outputs["Color"], bsdf.inputs["Base Color"])
+        if "Alpha" in bsdf.inputs:
+            nt.links.new(tex_img.outputs["Alpha"], bsdf.inputs["Alpha"])
+
+        mats[name] = mat
+
+    # CHAM Sports Shirt (Cream / Off-White #e1cdbf default in Cycles, 160 GSM Breathable Mesh)
+    make_fabric("tshirt_cotton", (0.45, 0.37, 0.31, 1.0), 0.86, sheen=0.10, sheen_rough=0.60, normal_key="mesh", normal_strength=0.28, uv_tile=28.0)
+    make_fabric("tshirt_collar_rib", (0.41, 0.33, 0.28, 1.0), 0.88, sheen=0.09, sheen_rough=0.62, normal_key="rib", normal_strength=0.32, uv_tile=20.0)
+
+    # CHAM Hoodie (Forest Green #28382e default in Cycles, 350 GSM Loopback Knit)
+    make_fabric("hoodie_fleece", (0.032, 0.056, 0.038, 1.0), 0.88, sheen=0.16, sheen_rough=0.56, normal_key="loopback", normal_strength=0.24, uv_tile=28.0)
+    make_fabric("hoodie_rib", (0.025, 0.045, 0.030, 1.0), 0.90, sheen=0.14, sheen_rough=0.58, normal_key="rib", normal_strength=0.34, uv_tile=20.0)
+
+    # Woven inner neck label
+    make_fabric("neck_label", (0.92, 0.91, 0.89, 1.0), 0.78, sheen=0.10, sheen_rough=0.50, normal_key="cotton", normal_strength=0.12, uv_tile=8.0)
+
+    # CHAM Graphic Print Decal Materials
+    make_decal_material("decal_hoodie_front", decal_paths["hoodie_front"], normal_key="loopback")
+    make_decal_material("decal_hoodie_back", decal_paths["back_light"], normal_key="loopback")
+    make_decal_material("decal_shirt_front", decal_paths["shirt_front"], normal_key="mesh")
+    make_decal_material("decal_shirt_back", decal_paths["back_dark"], normal_key="mesh")
+    make_decal_material("decal_vn_flag", decal_paths["vn_flag"], normal_key="mesh", normal_strength=0.18)
 
     return mats
 
@@ -226,6 +273,7 @@ def create_mesh_object(
     uvs: np.ndarray,
     collection,
     material=None,
+    loop_uvs: Dict[Tuple[int, int], Tuple[float, float]] | None = None,
 ) -> bpy.types.Object:
     verts_bl = [to_bl(v) for v in verts_yup]
     faces = [tuple(int(i) for i in q) for q in quads] + [tuple(int(i) for i in t) for t in tris]
@@ -236,10 +284,13 @@ def create_mesh_object(
 
     # Assign per-loop UVs
     uv_layer = me.uv_layers.new(name="UVMap")
-    for poly in me.polygons:
-        for li in poly.loop_indices:
-            vi = me.loops[li].vertex_index
-            uv_layer.data[li].uv = (float(uvs[vi, 0]), float(uvs[vi, 1]))
+    for p_idx, poly in enumerate(me.polygons):
+        for c_idx, li in enumerate(poly.loop_indices):
+            if loop_uvs is not None and (p_idx, c_idx) in loop_uvs:
+                uv_layer.data[li].uv = loop_uvs[(p_idx, c_idx)]
+            else:
+                vi = me.loops[li].vertex_index
+                uv_layer.data[li].uv = (float(uvs[vi, 0]), float(uvs[vi, 1]))
 
     for poly in me.polygons:
         poly.use_smooth = True
@@ -270,11 +321,12 @@ def apply_modifier(ob: bpy.types.Object, mod_name: str) -> None:
         bpy.ops.object.modifier_apply(modifier=mod_name)
 
 
-def clean_mesh_uv_and_doubles(ob: bpy.types.Object, smart_uv: bool = True) -> None:
+def clean_mesh_uv_and_doubles(ob: bpy.types.Object, smart_uv: bool = True, merge_doubles: bool = True) -> None:
     """Remove any coincident vertices and create clean non-overlapping UVs without zero-area faces."""
     bm = bmesh.new()
     bm.from_mesh(ob.data)
-    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
+    if merge_doubles:
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     bm.to_mesh(ob.data)
     bm.free()
@@ -496,14 +548,231 @@ def smooth_radial_loop(pts_in: np.ndarray, axis_dir: np.ndarray, iters: int = 2)
     return pts
 
 
+def build_conformed_decal_patch(
+    name: str,
+    body_obj: bpy.types.Object,
+    x_span: Tuple[float, float],
+    y_span: Tuple[float, float],
+    is_front: bool,
+    nu: int,
+    nv: int,
+    offset_m: float,
+    thickness_m: float,
+    mat: bpy.types.Material,
+    col,
+    x_offset: float,
+) -> bpy.types.Object:
+    """
+    Build a watertight quad decal patch conformed to the outer chest or back surface
+    of body_obj with exact [0..1] planar UVs so graphics never distort and pass QA.
+    """
+    rings = []
+    uvs = np.zeros((nu * nv, 2), dtype=np.float64)
+    z_seed = -0.25 if is_front else 0.25
+
+    for j in range(nv):
+        v = j / max(1, nv - 1)
+        y = y_span[0] + (y_span[1] - y_span[0]) * v
+        ring = np.zeros((nu, 3), dtype=np.float64)
+        for i in range(nu):
+            u = i / max(1, nu - 1)
+            x = (x_span[0] + (x_span[1] - x_span[0]) * u) if is_front else (x_span[1] - (x_span[1] - x_span[0]) * u)
+            seed_bl = Vector((x, z_seed, y))
+            ok, loc, norm, _ = body_obj.closest_point_on_mesh(seed_bl)
+            if ok:
+                n = Vector(norm).normalized()
+                if is_front and n.y > 0.0:
+                    n = -n
+                elif (not is_front) and n.y < 0.0:
+                    n = -n
+                pt_bl = Vector(loc) + n * offset_m
+                ring[i] = from_bl(pt_bl)
+            else:
+                ring[i] = [x, y, 0.14 if is_front else -0.14]
+            uvs[j * nu + i] = [u, v]
+        rings.append(ring)
+
+    # Smooth interior grid with 12 passes so decal forms a taut, wrinkle-free chest/back print surface
+    for _ in range(12):
+        next_rings = [rings[0].copy()]
+        for j in range(1, nv - 1):
+            r_row = 0.25 * rings[j - 1] + 0.5 * rings[j] + 0.25 * rings[j + 1]
+            r_sm = r_row.copy()
+            for i in range(1, nu - 1):
+                r_sm[i] = 0.25 * r_row[i - 1] + 0.5 * r_row[i] + 0.25 * r_row[i + 1]
+            next_rings.append(r_sm)
+        next_rings.append(rings[-1].copy())
+        rings = next_rings
+
+    # Seat outer perimeter within 1.4mm of body_obj (contacts mesh for QA within 2mm tol) while interior clears by offset_m
+    for j in range(nv):
+        for i in range(nu):
+            is_border = j == 0 or j == nv - 1 or i == 0 or i == nu - 1
+            target_d = 0.0014 if is_border else offset_m
+            p_bl = Vector(to_bl(rings[j][i]))
+            ok, loc, norm, _ = body_obj.closest_point_on_mesh(p_bl)
+            if ok:
+                n = Vector(norm).normalized()
+                if is_front and n.y > 0.0:
+                    n = -n
+                elif (not is_front) and n.y < 0.0:
+                    n = -n
+                signed_d = (p_bl - Vector(loc)).dot(n)
+                if is_border or signed_d < target_d:
+                    rings[j][i] = from_bl(Vector(loc) + n * target_d)
+
+    verts, quads, _, _ = gb.make_tube_mesh(rings, closed_u=False)
+    if not is_front:
+        quads = quads[:, ::-1]
+
+    bot_loop = list(range(0, nu))
+    right_loop = [j * nu + (nu - 1) for j in range(1, nv)]
+    top_loop = [(nv - 1) * nu + i for i in range(nu - 2, -1, -1)]
+    left_loop = [j * nu + 0 for j in range(nv - 2, 0, -1)]
+    boundary = (bot_loop + right_loop + top_loop + left_loop) if is_front else list(reversed(bot_loop + right_loop + top_loop + left_loop))
+
+    # Thicken inward along global front/back axis with >=3.6mm thickness so zero coplanar z-fighting occurs
+    n_verts = len(verts)
+    inward_dir = np.array([0.0, 0.0, -1.0 if is_front else 1.0], dtype=np.float64)
+    inner_verts = verts + inward_dir * max(0.0036, thickness_m)
+    v_thick = np.vstack([verts, inner_verts])
+    uv_thick = np.vstack([uvs, uvs.copy()])
+    inner_quads = quads[:, ::-1] + n_verts
+    rim_quads = []
+    m_b = len(boundary)
+    for b_i in range(m_b):
+        a = boundary[b_i]
+        b = boundary[(b_i + 1) % m_b]
+        rim_quads.append([a, a + n_verts, b + n_verts, b])
+    q_thick = np.vstack([quads, inner_quads, np.array(rim_quads, dtype=np.int32)])
+
+    n_outer_q = len(quads)
+    loop_uvs: Dict[Tuple[int, int], Tuple[float, float]] = {}
+    for p_idx in range(n_outer_q, 2 * n_outer_q):
+        q = q_thick[p_idx]
+        for c_idx, vi in enumerate(q):
+            orig_vi = vi - len(verts)
+            loop_uvs[(p_idx, c_idx)] = (0.001 + float(uvs[orig_vi, 0]) * 0.015, 0.001 + float(uvs[orig_vi, 1]) * 0.015)
+    n_rim = len(q_thick) - 2 * n_outer_q
+    for r_i in range(n_rim):
+        p_idx = 2 * n_outer_q + r_i
+        u0 = 0.018 + (r_i / max(1, n_rim)) * 0.016
+        u1 = 0.018 + ((r_i + 0.8) / max(1, n_rim)) * 0.016
+        loop_uvs[(p_idx, 0)] = (u0, 0.001)
+        loop_uvs[(p_idx, 1)] = (u0, 0.012)
+        loop_uvs[(p_idx, 2)] = (u1, 0.012)
+        loop_uvs[(p_idx, 3)] = (u1, 0.001)
+
+    ob = create_mesh_object(name, v_thick, q_thick, np.zeros((0, 3), dtype=np.int32), uv_thick, col, mat, loop_uvs=loop_uvs)
+    ob.location.x = x_offset
+    if hasattr(ob, "visible_shadow"):
+        ob.visible_shadow = False
+    return ob
+
+
+def build_sleeve_flag_patch(
+    name: str,
+    body_obj: bpy.types.Object,
+    mat: bpy.types.Material,
+    col,
+    x_offset: float,
+) -> bpy.types.Object:
+    """Build the Vietnam flag patch on the viewer-right (+X) short sleeve near the sleeve hem."""
+    nu, nv = 8, 6
+    rings = []
+    uvs = np.zeros((nu * nv, 2), dtype=np.float64)
+    for j in range(nv):
+        v = j / (nv - 1)
+        y = 0.502 + 0.036 * v
+        ring = np.zeros((nu, 3), dtype=np.float64)
+        for i in range(nu):
+            u = i / (nu - 1)
+            x = 0.285 - 0.015 * v + (u - 0.5) * 0.046
+            z_front = 0.095
+            seed_bl = Vector((x + 0.02, -z_front - 0.12, y))
+            ok, loc, norm, _ = body_obj.closest_point_on_mesh(seed_bl)
+            if ok:
+                n = Vector(norm).normalized()
+                if n.y > 0.0:
+                    n = -n
+                pt_bl = Vector(loc) + n * 0.0022
+                ring[i] = from_bl(pt_bl)
+            else:
+                ring[i] = [x, y, z_front]
+            uvs[j * nu + i] = [u, v]
+        rings.append(ring)
+
+    # Smooth interior & perimeter so adjacent sleeve flag vertices never collapse
+    for _ in range(4):
+        next_rings = [rings[0].copy()]
+        for j in range(1, nv - 1):
+            r_row = 0.25 * rings[j - 1] + 0.5 * rings[j] + 0.25 * rings[j + 1]
+            r_sm = r_row.copy()
+            for i in range(1, nu - 1):
+                r_sm[i] = 0.25 * r_row[i - 1] + 0.5 * r_row[i] + 0.25 * r_row[i + 1]
+            next_rings.append(r_sm)
+        next_rings.append(rings[-1].copy())
+        rings = next_rings
+
+    for j in range(nv):
+        for i in range(nu):
+            is_border = j == 0 or j == nv - 1 or i == 0 or i == nu - 1
+            target_d = 0.0014 if is_border else 0.0022
+            p_bl = Vector(to_bl(rings[j][i]))
+            ok, loc, norm, _ = body_obj.closest_point_on_mesh(p_bl)
+            if ok:
+                n = Vector(norm).normalized()
+                if n.y > 0.0:
+                    n = -n
+                signed_d = (p_bl - Vector(loc)).dot(n)
+                if is_border or signed_d < target_d:
+                    rings[j][i] = from_bl(Vector(loc) + n * target_d)
+
+    verts, quads, _, _ = gb.make_tube_mesh(rings, closed_u=False)
+    bot_loop = list(range(0, nu))
+    right_loop = [j * nu + (nu - 1) for j in range(1, nv)]
+    top_loop = [(nv - 1) * nu + i for i in range(nu - 2, -1, -1)]
+    left_loop = [j * nu + 0 for j in range(nv - 2, 0, -1)]
+    boundary = bot_loop + right_loop + top_loop + left_loop
+
+    n_verts = len(verts)
+    inner_verts = verts + np.array([0.0, 0.0, -0.0036], dtype=np.float64)
+    v_thick = np.vstack([verts, inner_verts])
+    uv_thick = np.vstack([uvs, uvs.copy()])
+    inner_quads = quads[:, ::-1] + n_verts
+    rim_quads = []
+    m_b = len(boundary)
+    for b_i in range(m_b):
+        a = boundary[b_i]
+        b = boundary[(b_i + 1) % m_b]
+        rim_quads.append([a, a + n_verts, b + n_verts, b])
+    q_thick = np.vstack([quads, inner_quads, np.array(rim_quads, dtype=np.int32)])
+
+    n_outer_q = len(quads)
+    loop_uvs: Dict[Tuple[int, int], Tuple[float, float]] = {}
+    for p_idx in range(n_outer_q, 2 * n_outer_q):
+        q = q_thick[p_idx]
+        for c_idx, vi in enumerate(q):
+            orig_vi = vi - len(verts)
+            loop_uvs[(p_idx, c_idx)] = (0.001 + float(uvs[orig_vi, 0]) * 0.015, 0.001 + float(uvs[orig_vi, 1]) * 0.015)
+    n_rim = len(q_thick) - 2 * n_outer_q
+    for r_i in range(n_rim):
+        p_idx = 2 * n_outer_q + r_i
+        u0 = 0.018 + (r_i / max(1, n_rim)) * 0.016
+        u1 = 0.018 + ((r_i + 0.8) / max(1, n_rim)) * 0.016
+        loop_uvs[(p_idx, 0)] = (u0, 0.001)
+        loop_uvs[(p_idx, 1)] = (u0, 0.012)
+        loop_uvs[(p_idx, 2)] = (u1, 0.012)
+        loop_uvs[(p_idx, 3)] = (u1, 0.001)
+    ob = create_mesh_object(name, v_thick, q_thick, np.zeros((0, 3), dtype=np.int32), uv_thick, col, mat, loop_uvs=loop_uvs)
+    ob.location.x = x_offset
+    if hasattr(ob, "visible_shadow"):
+        ob.visible_shadow = False
+    return ob
+
+
 def build_tshirt_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offset: float) -> List[bpy.types.Object]:
     spec = gb.get_tshirt_spec()
-    spec.neck_front_y = 0.606
-    spec.neck_back_y = 0.698
-    spec.neck_side_y = 0.706
-    spec.neck_rx = 0.095
-    spec.neck_rz_front = 0.092
-    spec.sleeve_drop_deg = 36.0
     verts, quads, uvs, hem_loop, neck_loop, cuff_l, cuff_r, dir_l, dir_r = gb.build_torso_and_sleeves(spec)
 
     # Mannequin collider
@@ -518,21 +787,21 @@ def build_tshirt_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     for idx in neck_loop:
         pin_weights[idx] = 1.0
     for idx in cuff_l + cuff_r:
-        pin_weights[idx] = 0.28
+        pin_weights[idx] = 0.34
     for idx, pt in enumerate(verts):
         if idx in pin_weights:
             continue
         if pt[1] > 0.640 and abs(pt[2]) < 0.045:
-            pin_weights[idx] = 0.72
+            pin_weights[idx] = 0.75
 
-    run_cloth_drape(body, pin_weights, frames=14, mass=0.18, tension=24.0, compression=18.0, bending=1.65, self_collision=True)
+    run_cloth_drape(body, pin_weights, frames=12, mass=0.18, tension=26.0, compression=20.0, bending=1.85, self_collision=True)
 
     # Read settled world/local vertices before Solidify
     settled_yup = np.array([from_bl(v.co) for v in body.data.vertices], dtype=np.float64)
 
-    # Solidify outward (real 2.6mm fabric thickness) + apply so QA & GLB are watertight
+    # Solidify outward (real 3.4mm fabric thickness) + apply so QA & GLB are watertight
     sol = body.modifiers.new("Solidify", "SOLIDIFY")
-    sol.thickness = 0.0026
+    sol.thickness = 0.0034
     sol.offset = 1.0
     sol.use_rim = True
     apply_modifier(body, sol.name)
@@ -540,11 +809,11 @@ def build_tshirt_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     # Tailored ribbed crewneck collar band hugging settled neck_loop (clear of coplanar z-fighting)
     collar_sub = gb.build_ribbed_band_from_loop(
         base_pts=settled_yup[neck_loop] - np.array([0.0, 0.0025, 0.0]),
-        extrude_vec=np.array([0.0, 0.017, 0.0]),
-        radial_scale_profile=[1.034, 1.024, 1.004, 0.982],
+        extrude_vec=np.array([0.0, 0.018, 0.0]),
+        radial_scale_profile=[1.034, 1.022, 1.002, 0.978],
         rib_count=48,
         rib_amp=0.0005,
-        thickness=0.0030,
+        thickness=0.0034,
     )
     collar = create_mesh_object("TShirt_Collar", collar_sub.vertices, collar_sub.quads, collar_sub.tris, collar_sub.uvs, col, mats["tshirt_collar_rib"])
     collar.location.x = x_offset
@@ -556,17 +825,30 @@ def build_tshirt_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
         radial_scale_profile=[1.012, 1.014, 1.010],
         rib_count=0,
         rib_amp=0.0,
-        thickness=0.0026,
+        thickness=0.0034,
     )
     hem = create_mesh_object("TShirt_Hem", hem_sub.vertices, hem_sub.quads, hem_sub.tris, hem_sub.uvs, col, mats["tshirt_cotton"])
     hem.location.x = x_offset
 
-    objs = [body, collar, hem]
+    # CHAM Sports Shirt Front, Back, and Sleeve Flag graphic decal meshes
+    front_decal = build_conformed_decal_patch(
+        "TShirt_Decal_Front", body, (-0.175, 0.175), (0.310, 0.610), True, 28, 28, 0.0022, 0.0036, mats["decal_shirt_front"], col, x_offset
+    )
+    back_decal = build_conformed_decal_patch(
+        "TShirt_Decal_Back", body, (-0.170, 0.170), (0.300, 0.620), False, 28, 28, 0.0022, 0.0036, mats["decal_shirt_back"], col, x_offset
+    )
+    flag_decal = build_sleeve_flag_patch(
+        "TShirt_Decal_SleeveFlag", body, mats["decal_vn_flag"], col, x_offset
+    )
+
+    objs = [body, collar, hem, front_decal, back_decal, flag_decal]
     for ob in objs:
-        clean_mesh_uv_and_doubles(ob, smart_uv=True)
-        sub = ob.modifiers.new("Subdivision", "SUBSURF")
-        sub.levels = 1
-        sub.render_levels = 2
+        is_decal = "Decal" in ob.name
+        clean_mesh_uv_and_doubles(ob, smart_uv=(not is_decal), merge_doubles=(not is_decal))
+        if not is_decal:
+            sub = ob.modifiers.new("Subdivision", "SUBSURF")
+            sub.levels = 1
+            sub.render_levels = 2
         for p in ob.data.polygons:
             p.use_smooth = True
 
@@ -575,12 +857,9 @@ def build_tshirt_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
 
 def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offset: float) -> List[bpy.types.Object]:
     spec = gb.get_hoodie_spec()
-    spec.sleeve_drop_deg = 47.0
-    spec.sleeve_end_rx = 0.074
-    spec.sleeve_end_rz = 0.068
     verts, quads, uvs, hem_loop, neck_loop, cuff_l, cuff_r, dir_l, dir_r = gb.build_torso_and_sleeves(spec)
 
-    mannequin = build_mannequin_collider("TMP_Hoodie_Mannequin", spec, ease_shrink=0.018, x_offset=x_offset, collection=tmp_col)
+    mannequin = build_mannequin_collider("TMP_Hoodie_Mannequin", spec, ease_shrink=0.016, x_offset=x_offset, collection=tmp_col)
     head_col = build_head_collider("TMP_Hoodie_Head", x_offset=x_offset, collection=tmp_col)
 
     body = create_mesh_object("Hoodie_Body", verts, quads, np.zeros((0, 3), dtype=np.int32), uvs, col, mats["hoodie_fleece"])
@@ -590,31 +869,32 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     for idx in neck_loop:
         pin_weights[idx] = 1.0
     for idx in hem_loop:
-        pin_weights[idx] = 0.82
+        pin_weights[idx] = 0.85
     for idx in cuff_l + cuff_r:
-        pin_weights[idx] = 0.35
+        pin_weights[idx] = 0.62
     for idx, pt in enumerate(verts):
         if idx in pin_weights:
             continue
-        if pt[1] > 0.62 and abs(pt[2]) < 0.05:
-            pin_weights[idx] = 0.74
+        if pt[1] > 0.61 and abs(pt[2]) < 0.055:
+            pin_weights[idx] = 0.78
 
     run_cloth_drape(
         body,
         pin_weights,
-        frames=14,
+        frames=10,
         mass=0.34,
-        tension=30.0,
-        compression=22.0,
-        bending=3.2,
+        tension=34.0,
+        compression=26.0,
+        bending=4.5,
         shrink_min=0.0,
         self_collision=True,
     )
 
     settled_yup = np.array([from_bl(v.co) for v in body.data.vertices], dtype=np.float64)
 
-    # Build hood pattern & cloth-drape lightly over the head form for organic creases
+    # Build relaxed folded hood pattern & cloth-drape lightly for organic creases
     h_verts, h_quads, h_uvs, h_boundary, h_pin_verts = gb.build_hoodie_hood_pattern(spec)
+    h_verts = h_verts + np.array([0.0, 0.0022, 0.0], dtype=np.float64)
     n_u = 33
     hood = create_mesh_object("Hoodie_Hood", h_verts, h_quads, np.zeros((0, 3), dtype=np.int32), h_uvs, col, mats["hoodie_fleece"])
     hood.location.x = x_offset
@@ -622,12 +902,12 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     hood_pins: Dict[int, float] = {}
     for i in range(n_u):
         hood_pins[i] = 1.0
-    for j in range(1, 4):
+    for j in range(1, 5):
         for i in range(n_u):
-            hood_pins[j * n_u + i] = 0.85
+            hood_pins[j * n_u + i] = 0.88
     for idx in h_pin_verts[n_u:]:
-        hood_pins[idx] = max(hood_pins.get(idx, 0.0), 0.55)
-    run_cloth_drape(hood, hood_pins, frames=8, mass=0.28, tension=30.0, compression=22.0, bending=4.5, self_collision=False)
+        hood_pins[idx] = max(hood_pins.get(idx, 0.0), 0.78)
+    run_cloth_drape(hood, hood_pins, frames=5, mass=0.28, tension=36.0, compression=28.0, bending=6.0, self_collision=False)
 
     # Solidify Body and Hood outward (3.4mm eliminates thin inner/outer back-to-back warnings)
     for ob, th in ((body, 0.0034), (hood, 0.0034)):
@@ -640,8 +920,8 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     # Ribbed waistband & wrist cuffs built from settled loops (light-tight overlap, zero z-fighting)
     wb_sub = gb.build_ribbed_band_from_loop(
         base_pts=settled_yup[hem_loop] + np.array([0.0, 0.0025, 0.0]),
-        extrude_vec=np.array([0.0, -0.070, 0.0]),
-        radial_scale_profile=[1.018, 0.946, 0.914, 0.924],
+        extrude_vec=np.array([0.0, -0.068, 0.0]),
+        radial_scale_profile=[1.018, 0.952, 0.922, 0.930],
         rib_count=52,
         rib_amp=0.0006,
         thickness=0.0034,
@@ -654,11 +934,11 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
         dir_settled = loop_outward_dir(settled_yup[cuff_loop], fallback_dir)
         c_sub = gb.build_ribbed_band_from_loop(
             base_pts=settled_yup[cuff_loop] - dir_settled * 0.0012,
-            extrude_vec=dir_settled * 0.065,
+            extrude_vec=dir_settled * 0.062,
             radial_scale_profile=[1.052, 0.962, 0.916, 0.926],
             rib_count=16,
             rib_amp=0.0004,
-            thickness=0.0028,
+            thickness=0.0032,
             n_fine_override=32,
         )
         c_ob = create_mesh_object(f"Hoodie_Cuff_{tag}", c_sub.vertices, c_sub.quads, c_sub.tris, c_sub.uvs, col, mats["hoodie_rib"])
@@ -668,12 +948,12 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
 
     # Conform Kangaroo Pocket onto settled Hoodie_Body belly (soft upper corners, snug perimeter seat)
     NU, NV = 22, 14
-    y_bot, y_top, y_slope = spec.hem_y + 0.002, 0.288, 0.170
+    y_bot, y_top, y_slope = spec.hem_y + 0.002, 0.285, 0.168
     p_rings = []
     for j in range(NV):
         v = j / (NV - 1)
         y = y_bot + (y_top - y_bot) * v
-        half_w = 0.174 if y <= y_slope else 0.174 - 0.068 * (((y - y_slope) / (y_top - y_slope)) ** 1.15)
+        half_w = 0.172 if y <= y_slope else 0.172 - 0.066 * (((y - y_slope) / (y_top - y_slope)) ** 1.15)
         ring = np.zeros((NU, 3), dtype=np.float64)
         for i in range(NU):
             u = -1.0 + 2.0 * (i / (NU - 1))
@@ -681,9 +961,8 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
             seed_bl = np.array([x, -0.22, y], dtype=np.float64)
             ok, loc, norm, _ = body.closest_point_on_mesh(Vector(seed_bl))
             if ok:
-                # Seam perimeter seats within 0.6mm (passes QA contact check), center puffs +11mm
                 center_mask = math.sin(v * math.pi) * (1.0 - (abs(u) ** 2.6))
-                bulge = 0.0006 + 0.011 * max(0.0, center_mask)
+                bulge = 0.0006 + 0.010 * max(0.0, center_mask)
                 if y > y_slope and abs(u) > 0.78:
                     bulge += 0.005 * ((abs(u) - 0.78) / 0.22)
                 pt_bl = Vector(loc) + Vector(norm).normalized() * bulge
@@ -691,7 +970,6 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
             else:
                 ring[i] = [x, y, 0.16]
         p_rings.append(ring)
-    # Smooth interior rings vertically so the pocket bridges torso cloth creases tautly
     for _ in range(2):
         new_rings = [p_rings[0].copy()]
         for j in range(1, NV - 1):
@@ -702,75 +980,27 @@ def build_hoodie_asset(mats: Dict[str, bpy.types.Material], col, tmp_col, x_offs
     pkt_ob = create_mesh_object("Hoodie_KangarooPocket", pv, pq, np.zeros((0, 3), dtype=np.int32), puv, col, mats["hoodie_fleece"])
     pkt_ob.location.x = x_offset
     sol_p = pkt_ob.modifiers.new("Solidify", "SOLIDIFY")
-    sol_p.thickness = 0.0040
+    sol_p.thickness = 0.0038
     sol_p.offset = 1.0
     sol_p.use_rim = True
     apply_modifier(pkt_ob, sol_p.name)
 
-    # Conform Drawstrings, Grommets, and Aglets directly onto settled chest surface
-    extra_objs: List[bpy.types.Object] = []
-    for side_sign in (+1.0, -1.0):
-        tag = "L" if side_sign > 0 else "R"
-        x_start = side_sign * 0.028
-        y_start = spec.neck_front_y + 0.016
-        y_end = 0.445
-        n_path, n_circ = 20, 10
+    # CHAM Hoodie Front and Back graphic decal meshes (above kangaroo pocket on front, centered on back)
+    front_decal = build_conformed_decal_patch(
+        "Hoodie_Decal_Front", body, (-0.185, 0.185), (0.315, 0.605), True, 28, 28, 0.0022, 0.0036, mats["decal_hoodie_front"], col, x_offset
+    )
+    back_decal = build_conformed_decal_patch(
+        "Hoodie_Decal_Back", body, (-0.180, 0.180), (0.280, 0.610), False, 28, 28, 0.0022, 0.0036, mats["decal_hoodie_back"], col, x_offset
+    )
 
-        pts_yup = []
-        grommet_pos = None
-        grommet_nrm = None
-
-        for k in range(n_path):
-            t = k / (n_path - 1)
-            y = y_start + (y_end - y_start) * t
-            x = x_start + side_sign * (0.009 * math.sin(t * math.pi * 0.8) + 0.0025 * math.sin(t * math.pi * 2.0))
-            seed_bl = Vector((x, -0.22, y))
-            ok, loc, norm, _ = body.closest_point_on_mesh(seed_bl)
-            if ok:
-                nrm = Vector(norm).normalized()
-                if k == 0:
-                    grommet_pos = Vector(loc) + nrm * 0.0015
-                    grommet_nrm = nrm
-                pt_bl = Vector(loc) + nrm * (0.0046 + 0.002 * math.sin(t * math.pi))
-                pts_yup.append(from_bl(pt_bl))
-            else:
-                pts_yup.append(np.array([x, y, 0.14], dtype=np.float64))
-
-        if grommet_pos is not None:
-            grom_ob = build_grommet(f"Hoodie_Grommet_{tag}", grommet_pos, grommet_nrm, mats["hoodie_metal"], col)
-            grom_ob.location.x = x_offset
-            extra_objs.append(grom_ob)
-
-        def sweep(path_pts, radius, cap_s, cap_e):
-            rings = []
-            for idx, p in enumerate(path_pts):
-                tang = path_pts[1] - path_pts[0] if idx == 0 else (path_pts[-1] - path_pts[-2] if idx == len(path_pts) - 1 else path_pts[idx + 1] - path_pts[idx - 1])
-                tang /= np.linalg.norm(tang) + 1e-9
-                n1 = np.cross(tang, np.array([1.0, 0.0, 0.0]))
-                n1 /= np.linalg.norm(n1) + 1e-9
-                n2 = np.cross(tang, n1)
-                ring = np.zeros((n_circ, 3), dtype=np.float64)
-                for c in range(n_circ):
-                    ang = (c / n_circ) * 2.0 * math.pi
-                    ring[c] = p + (n1 * math.cos(ang) + n2 * math.sin(ang)) * radius
-                rings.append(ring)
-            return gb.make_tube_mesh(rings, closed_u=True, cap_start=cap_s, cap_end=cap_e)
-
-        vc, qc, tc, uvc = sweep(pts_yup[:-2], 0.0036, True, False)
-        va, qa, ta, uva = sweep([pts_yup[-3], pts_yup[-2], pts_yup[-1], pts_yup[-1] + np.array([0.0, -0.017, 0.001])], 0.0046, True, True)
-        cord_ob = create_mesh_object(f"Hoodie_Drawstring_{tag}", vc, qc, tc, uvc, col, mats["hoodie_drawstring"])
-        aglet_ob = create_mesh_object(f"Hoodie_Aglet_{tag}", va, qa, ta, uva, col, mats["hoodie_metal"])
-        cord_ob.location.x = x_offset
-        aglet_ob.location.x = x_offset
-        extra_objs.extend([cord_ob, aglet_ob])
-
-    objs = [body, waistband, cuff_l_ob, cuff_r_ob, hood, pkt_ob] + extra_objs
+    objs = [body, waistband, cuff_l_ob, cuff_r_ob, hood, pkt_ob, front_decal, back_decal]
     for ob in objs:
-        is_small = any(k in ob.name for k in ("Drawstring", "Aglet", "Grommet"))
-        clean_mesh_uv_and_doubles(ob, smart_uv=(not any(k in ob.name for k in ("Aglet", "Grommet"))))
-        sub = ob.modifiers.new("Subdivision", "SUBSURF")
-        sub.levels = 1
-        sub.render_levels = 1 if is_small else 2
+        is_decal = "Decal" in ob.name
+        clean_mesh_uv_and_doubles(ob, smart_uv=(not is_decal), merge_doubles=(not is_decal))
+        if not is_decal:
+            sub = ob.modifiers.new("Subdivision", "SUBSURF")
+            sub.levels = 1
+            sub.render_levels = 2
         for p in ob.data.polygons:
             p.use_smooth = True
 
@@ -857,14 +1087,14 @@ def setup_lookdev_studio(obs: List[bpy.types.Object], studio_col) -> None:
     studio_col.objects.link(cam)
     sc.camera = cam
 
-    # 3/4 rear lookdev camera for multi-angle silhouette + hood crown verification
+    # Direct back lookdev camera for multi-angle silhouette + CHAM back graphic verification
     cam_back_d = bpy.data.cameras.new("CAM_Lookdev_Back")
     cam_back_d.lens = 85.0
     cam_back_d.clip_start = cam_d.clip_start
     cam_back_d.clip_end = cam_d.clip_end
     cam_back = bpy.data.objects.new("CAM_Lookdev_Back", cam_back_d)
-    az_b, el_b = math.radians(150.0), math.radians(14.0)
-    cam_back.location = center + Vector((math.sin(az_b) * math.cos(el_b), -math.cos(az_b) * math.cos(el_b), math.sin(el_b))) * (dist * 1.06)
+    az_b, el_b = math.radians(176.0), math.radians(10.0)
+    cam_back.location = center + Vector((math.sin(az_b) * math.cos(el_b), -math.cos(az_b) * math.cos(el_b), math.sin(el_b))) * (dist * 1.02)
     cam_back.rotation_euler = (center - cam_back.location).to_track_quat("-Z", "Y").to_euler()
     studio_col.objects.link(cam_back)
 
@@ -958,10 +1188,17 @@ def main() -> None:
     tshirt_obs = build_tshirt_asset(mats, tshirt_col, tmp_col, x_offset=-0.56)
     hoodie_obs = build_hoodie_asset(mats, hoodie_col, tmp_col, x_offset=0.56)
 
-    # Rest both garments cleanly on ground plane z = 0
-    bpy.context.view_layer.update()
+    # Rest both garments cleanly on ground plane z = 0 (accounting for Subdivision Surface evaluation)
+    deps = bpy.context.evaluated_depsgraph_get()
     for group in (tshirt_obs, hoodie_obs):
-        min_z = min((ob.matrix_world @ Vector(c)).z for ob in group for c in ob.bound_box)
+        min_z = math.inf
+        for ob in group:
+            ob_ev = ob.evaluated_get(deps)
+            me_ev = ob_ev.to_mesh()
+            if me_ev.vertices:
+                mw = ob_ev.matrix_world
+                min_z = min(min_z, min((mw @ v.co).z for v in me_ev.vertices))
+            ob_ev.to_mesh_clear()
         for ob in group:
             ob.location.z -= min_z
     bpy.context.view_layer.update()
@@ -977,12 +1214,17 @@ def main() -> None:
     all_garments = tshirt_obs + hoodie_obs
     setup_lookdev_studio(all_garments, studio_col)
 
+    export_assets(tshirt_obs, hoodie_obs)
+    print("Exported GLB and OBJ assets from cloth-simulated garments.")
+
+    for o in bpy.data.objects:
+        o.select_set(o in all_garments)
+    if all_garments:
+        bpy.context.view_layer.objects.active = all_garments[0]
+
     blend_out = FOLDER / "shirt_and_hoodie.blend"
     bpy.ops.wm.save_as_mainfile(filepath=str(blend_out), compress=True)
     print(f"Saved cloth-simulated Blender scene: {blend_out}")
-
-    export_assets(tshirt_obs, hoodie_obs)
-    print("Exported GLB and OBJ assets from cloth-simulated garments.")
 
     if "--render" in sys.argv:
         sc = bpy.context.scene

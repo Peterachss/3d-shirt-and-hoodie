@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Shirt &amp; Hoodie 3D Studio</title>
-  <meta name="description" content="Interactive 3D Blender apparel studio preview for the crewneck T-shirt and pullover hoodie models." />
-  <meta property="og:title" content="Shirt &amp; Hoodie 3D Studio" />
-  <meta property="og:description" content="Inspect the quad-topology crewneck T-shirt and pullover hoodie in interactive 3D or view the Blender Cycles render." />
+  <title>CHAM Apparel 3D Studio · ISHCMC</title>
+  <meta name="description" content="Interactive 3D Blender apparel studio for the ISHCMC CHAM Hoodie (350 GSM Loopback Knit) and CHAM Sports Shirt (160 GSM Breathable Mesh)." />
+  <meta property="og:title" content="CHAM Apparel 3D Studio · ISHCMC" />
+  <meta property="og:description" content="Inspect the 3D CHAM Hoodie and CHAM Sports Shirt in all four colorways (Forest Green, Navy, Cream, Pink) or view the Blender Cycles renders." />
   <meta property="og:type" content="website" />
   <meta property="og:image" content="./blender_studio_render.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -26,13 +26,11 @@
   <div class="app-frame">
     <header class="topbar">
       <div class="brand-group">
-        <a class="brand" href="#top" aria-label="Shirt and Hoodie 3D Studio">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M8.5 4.5L12 6l3.5-1.5L20 7.5l-2 4-2.5-1V20H8.5v-9.5L6 11.5l-2-4 4.5-3z" />
-          </svg>
-          <h1 class="brand-title">Shirt &amp; Hoodie Studio</h1>
+        <a class="brand" href="#top" aria-label="CHAM Apparel 3D Studio">
+          <img class="brand-crest" src="./textures/cham_ishcmc_badge.png" width="24" height="24" alt="ISHCMC crest" />
+          <h1 class="brand-title">CHAM Apparel 3D Studio</h1>
         </a>
-        <span class="status-pill">glTF 2.0 / Blender 5.3</span>
+        <span class="status-pill">ISHCMC · Blender 5.3</span>
       </div>
 
       <div class="topbar-actions">
@@ -59,22 +57,23 @@
     </header>
 
     <main class="workspace">
-      <aside class="inspector" aria-label="Model controls and specifications">
+      <aside class="inspector" aria-label="CHAM garment controls and specifications">
         <section class="panel-group">
-          <h2 class="group-label">Garment</h2>
-          <div class="segmented" role="group" aria-label="Select garment to preview">
-            <button class="seg-btn is-active" type="button" data-garment="both">Both</button>
-            <button class="seg-btn" type="button" data-garment="tshirt">T-Shirt</button>
+          <h2 class="group-label">Garment display</h2>
+          <div class="segmented segmented-4" role="group" aria-label="Select garment to preview">
+            <button class="seg-btn is-active" type="button" data-garment="lineup">All 4</button>
+            <button class="seg-btn" type="button" data-garment="both">Pair</button>
             <button class="seg-btn" type="button" data-garment="hoodie">Hoodie</button>
+            <button class="seg-btn" type="button" data-garment="tshirt">Shirt</button>
           </div>
         </section>
 
         <section class="panel-group">
           <h2 class="group-label">Camera angle</h2>
           <div class="preset-grid" role="group" aria-label="Camera angle presets">
-            <button class="preset-btn is-active" type="button" data-camera="three-quarter">3/4 view</button>
-            <button class="preset-btn" type="button" data-camera="front">Front</button>
+            <button class="preset-btn is-active" type="button" data-camera="front">Front</button>
             <button class="preset-btn" type="button" data-camera="back">Back</button>
+            <button class="preset-btn" type="button" data-camera="three-quarter">3/4 view</button>
             <button class="preset-btn" type="button" data-camera="side">Side</button>
           </div>
           <label class="toggle-row" for="autoRotateToggle">
@@ -96,64 +95,69 @@
         </section>
 
         <section class="panel-group">
-          <h2 class="group-label">Fabric &amp; colorway</h2>
+          <h2 class="group-label">CHAM Hoodie · 350 GSM</h2>
           <div class="swatch-block">
             <div class="swatch-head">
-              <span>T-Shirt material</span>
-              <span id="tshirtFabricName" class="swatch-value">Cotton jersey</span>
-            </div>
-            <div class="fabric-row" role="group" aria-label="T-shirt fabric material">
-              <button class="fabric-btn is-active" type="button" data-fabric-target="tshirt" data-fabric="cotton" data-label="Cotton jersey">Cotton</button>
-              <button class="fabric-btn" type="button" data-fabric-target="tshirt" data-fabric="terry" data-label="French terry">Terry</button>
-              <button class="fabric-btn" type="button" data-fabric-target="tshirt" data-fabric="waffle" data-label="Waffle knit">Waffle</button>
-              <button class="fabric-btn" type="button" data-fabric-target="tshirt" data-fabric="fleece" data-label="Brushed fleece">Fleece</button>
-              <button class="fabric-btn" type="button" data-fabric-target="tshirt" data-fabric="nylon" data-label="Ripstop nylon">Nylon</button>
-            </div>
-            <div class="swatch-head">
-              <span>T-Shirt color</span>
-              <span id="tshirtColorName" class="swatch-value">Bone</span>
-            </div>
-            <div class="swatch-row" role="group" aria-label="T-shirt color swatches">
-              <button class="swatch-btn is-active" type="button" data-target="tshirt" data-color="#eae6de" data-name="Bone" aria-label="T-shirt Bone" style="--swatch: #eae6de;"></button>
-              <button class="swatch-btn" type="button" data-target="tshirt" data-color="#22252a" data-name="Charcoal" aria-label="T-shirt Charcoal" style="--swatch: #22252a;"></button>
-              <button class="swatch-btn" type="button" data-target="tshirt" data-color="#2e4239" data-name="Forest" aria-label="T-shirt Forest" style="--swatch: #2e4239;"></button>
-              <button class="swatch-btn" type="button" data-target="tshirt" data-color="#243144" data-name="Navy" aria-label="T-shirt Navy" style="--swatch: #243144;"></button>
-              <button class="swatch-btn" type="button" data-target="tshirt" data-color="#7c5642" data-name="Earth" aria-label="T-shirt Earth" style="--swatch: #7c5642;"></button>
-            </div>
-          </div>
-
-          <div class="swatch-block">
-            <div class="swatch-head">
-              <span>Hoodie material</span>
-              <span id="hoodieFabricName" class="swatch-value">Brushed fleece</span>
+              <span>100% Cotton</span>
+              <span id="hoodieFabricName" class="swatch-value">Loopback knit</span>
             </div>
             <div class="fabric-row" role="group" aria-label="Hoodie fabric material">
-              <button class="fabric-btn is-active" type="button" data-fabric-target="hoodie" data-fabric="fleece" data-label="Brushed fleece">Fleece</button>
-              <button class="fabric-btn" type="button" data-fabric-target="hoodie" data-fabric="terry" data-label="French terry">Terry</button>
+              <button class="fabric-btn is-active" type="button" data-fabric-target="hoodie" data-fabric="loopback" data-label="Loopback knit">Loop</button>
+              <button class="fabric-btn" type="button" data-fabric-target="hoodie" data-fabric="fleece" data-label="Brushed fleece">Fleece</button>
               <button class="fabric-btn" type="button" data-fabric-target="hoodie" data-fabric="cotton" data-label="Cotton jersey">Cotton</button>
               <button class="fabric-btn" type="button" data-fabric-target="hoodie" data-fabric="waffle" data-label="Waffle knit">Waffle</button>
-              <button class="fabric-btn" type="button" data-fabric-target="hoodie" data-fabric="nylon" data-label="Ripstop nylon">Nylon</button>
+              <button class="fabric-btn" type="button" data-fabric-target="hoodie" data-fabric="mesh" data-label="Breathable mesh">Mesh</button>
             </div>
             <div class="swatch-head">
-              <span>Hoodie color</span>
-              <span id="hoodieColorName" class="swatch-value">Slate</span>
+              <span>Colorway</span>
+              <span id="hoodieColorName" class="swatch-value">Forest Green</span>
             </div>
             <div class="swatch-row" role="group" aria-label="Hoodie color swatches">
-              <button class="swatch-btn is-active" type="button" data-target="hoodie" data-color="#2f343d" data-name="Slate" aria-label="Hoodie Slate" style="--swatch: #2f343d;"></button>
-              <button class="swatch-btn" type="button" data-target="hoodie" data-color="#191b1f" data-name="Obsidian" aria-label="Hoodie Obsidian" style="--swatch: #191b1f;"></button>
-              <button class="swatch-btn" type="button" data-target="hoodie" data-color="#d5cec2" data-name="Sand" aria-label="Hoodie Sand" style="--swatch: #d5cec2;"></button>
-              <button class="swatch-btn" type="button" data-target="hoodie" data-color="#3a4538" data-name="Moss" aria-label="Hoodie Moss" style="--swatch: #3a4538;"></button>
-              <button class="swatch-btn" type="button" data-target="hoodie" data-color="#4e2e33" data-name="Oxblood" aria-label="Hoodie Oxblood" style="--swatch: #4e2e33;"></button>
+              <button class="swatch-btn is-active" type="button" data-target="hoodie" data-color="#28382e" data-name="Forest Green" data-contrast="light" aria-label="Hoodie Forest Green" style="--swatch: #28382e;"></button>
+              <button class="swatch-btn" type="button" data-target="hoodie" data-color="#242839" data-name="Navy" data-contrast="light" aria-label="Hoodie Navy" style="--swatch: #242839;"></button>
+              <button class="swatch-btn" type="button" data-target="hoodie" data-color="#e1cdbf" data-name="Cream" data-contrast="dark" aria-label="Hoodie Cream" style="--swatch: #e1cdbf;"></button>
+              <button class="swatch-btn" type="button" data-target="hoodie" data-color="#e9afb9" data-name="Pastel Pink" data-contrast="dark" aria-label="Hoodie Pastel Pink" style="--swatch: #e9afb9;"></button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel-group">
+          <h2 class="group-label">CHAM Sports Shirt · 160 GSM</h2>
+          <div class="swatch-block">
+            <div class="swatch-head">
+              <span>100% Polyester</span>
+              <span id="tshirtFabricName" class="swatch-value">Breathable mesh</span>
+            </div>
+            <div class="fabric-row" role="group" aria-label="Sports shirt fabric material">
+              <button class="fabric-btn is-active" type="button" data-fabric-target="tshirt" data-fabric="mesh" data-label="Breathable mesh">Mesh</button>
+              <button class="fabric-btn" type="button" data-fabric-target="tshirt" data-fabric="cotton" data-label="Cotton jersey">Cotton</button>
+              <button class="fabric-btn" type="button" data-fabric-target="tshirt" data-fabric="loopback" data-label="Loopback knit">Loop</button>
+              <button class="fabric-btn" type="button" data-fabric-target="tshirt" data-fabric="waffle" data-label="Waffle knit">Waffle</button>
+              <button class="fabric-btn" type="button" data-fabric-target="tshirt" data-fabric="nylon" data-label="Athletic piqué">Piqué</button>
+            </div>
+            <div class="swatch-head">
+              <span>Colorway</span>
+              <span id="tshirtColorName" class="swatch-value">Cream</span>
+            </div>
+            <div class="swatch-row" role="group" aria-label="Sports shirt color swatches">
+              <button class="swatch-btn" type="button" data-target="tshirt" data-color="#28382e" data-name="Forest Green" data-contrast="light" aria-label="Sports Shirt Forest Green" style="--swatch: #28382e;"></button>
+              <button class="swatch-btn" type="button" data-target="tshirt" data-color="#242839" data-name="Navy" data-contrast="light" aria-label="Sports Shirt Navy" style="--swatch: #242839;"></button>
+              <button class="swatch-btn is-active" type="button" data-target="tshirt" data-color="#e1cdbf" data-name="Cream" data-contrast="dark" aria-label="Sports Shirt Cream" style="--swatch: #e1cdbf;"></button>
+              <button class="swatch-btn" type="button" data-target="tshirt" data-color="#e9afb9" data-name="Pastel Pink" data-contrast="dark" aria-label="Sports Shirt Pastel Pink" style="--swatch: #e9afb9;"></button>
             </div>
           </div>
         </section>
 
         <section class="panel-group specs-group">
-          <h2 class="group-label">Mesh specifications</h2>
+          <h2 class="group-label">Specifications</h2>
           <dl class="spec-list">
             <div class="spec-row">
-              <dt>Active meshes</dt>
-              <dd id="specParts" class="mono">--</dd>
+              <dt>Hoodie knit</dt>
+              <dd>Vải chân cua (350g)</dd>
+            </div>
+            <div class="spec-row">
+              <dt>Shirt knit</dt>
+              <dd>Vải thun mè (160g)</dd>
             </div>
             <div class="spec-row">
               <dt>Triangles</dt>
@@ -162,10 +166,6 @@
             <div class="spec-row">
               <dt>Vertices</dt>
               <dd id="specVerts" class="mono">--</dd>
-            </div>
-            <div class="spec-row">
-              <dt>Scale</dt>
-              <dd class="mono">1.0 m (1:1)</dd>
             </div>
             <div class="spec-row">
               <dt>Source</dt>
@@ -181,14 +181,14 @@
 
           <div id="loadingOverlay" class="loading-overlay">
             <div class="loading-card">
-              <span class="loading-title">Loading 3D studio scene</span>
+              <span class="loading-title">Loading CHAM 3D collection</span>
               <span id="loadingSub" class="loading-sub">Fetching shirt_and_hoodie.glb</span>
             </div>
           </div>
 
           <div class="viewport-hud-top">
             <div class="hud-badge">
-              <span id="activeModelLabel">Both garments</span>
+              <span id="activeModelLabel">CHAM Collection · All 4 Colorways</span>
             </div>
             <div class="hud-controls">
               <button id="zoomInBtn" class="icon-btn" type="button" aria-label="Zoom in">
@@ -223,13 +223,13 @@
 
         <div id="panelCycles" class="stage-pane cycles-pane" role="tabpanel" aria-labelledby="tabCycles" hidden>
           <div class="cycles-toolbar" role="group" aria-label="Cycles camera angle">
-            <button class="preset-btn is-active" type="button" data-cycles-src="./blender_studio_render.png" data-cycles-alt="Blender Cycles front hero render of the crewneck T-shirt and pullover hoodie">Front hero</button>
-            <button class="preset-btn" type="button" data-cycles-src="./blender_lookdev_back.png" data-cycles-alt="Blender Cycles 3/4 back lookdev render of the crewneck T-shirt and pullover hoodie">3/4 back lookdev</button>
+            <button class="preset-btn is-active" type="button" data-cycles-src="./blender_studio_render.png" data-cycles-alt="Blender Cycles front hero render of the CHAM Sports Shirt and CHAM Hoodie">Front hero</button>
+            <button class="preset-btn" type="button" data-cycles-src="./blender_lookdev_back.png" data-cycles-alt="Blender Cycles back lookdev render of the CHAM Sports Shirt and CHAM Hoodie">Back print lookdev</button>
           </div>
           <figure class="cycles-figure">
-            <img id="cyclesImg" src="./blender_studio_render.png" alt="Blender Cycles front hero render of the crewneck T-shirt and pullover hoodie" />
+            <img id="cyclesImg" src="./blender_studio_render.png" alt="Blender Cycles front hero render of the CHAM Sports Shirt and CHAM Hoodie" />
             <figcaption>
-              Rendered in Blender 5.3 Cycles (96 samples, packed fabric normal maps, AgX lookdev).
+              Rendered in Blender 5.3 Cycles (350 GSM Loopback Knit &amp; 160 GSM Breathable Mesh, AgX lookdev).
             </figcaption>
           </figure>
         </div>

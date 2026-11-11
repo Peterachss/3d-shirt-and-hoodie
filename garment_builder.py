@@ -557,27 +557,27 @@ def get_tshirt_spec() -> GarmentSpec:
     return GarmentSpec(
         hem_y=0.015,
         waist_y=0.25,
-        arm_bot_y=0.435,
-        chest_y=0.47,
+        arm_bot_y=0.455,
+        chest_y=0.49,
         arm_top_y=0.648,
-        neck_front_y=0.626,
+        neck_front_y=0.632,
         neck_back_y=0.706,
-        neck_side_y=0.718,
-        rx_hem=0.244,
+        neck_side_y=0.716,
+        rx_hem=0.236,
         rx_waist=0.228,
-        rx_chest=0.252,
-        rx_shoulder=0.242,
-        rz_hem=0.118,
-        rz_waist=0.106,
-        rz_chest=0.128,
-        neck_rx=0.092,
-        neck_rz_front=0.088,
-        neck_rz_back=0.074,
-        sleeve_len=0.205,
-        sleeve_drop_deg=40.0,
-        sleeve_fwd_deg=5.0,
-        sleeve_end_rx=0.084,
-        sleeve_end_rz=0.072,
+        rx_chest=0.242,
+        rx_shoulder=0.232,
+        rz_hem=0.114,
+        rz_waist=0.104,
+        rz_chest=0.122,
+        neck_rx=0.088,
+        neck_rz_front=0.084,
+        neck_rz_back=0.072,
+        sleeve_len=0.175,
+        sleeve_drop_deg=56.0,
+        sleeve_fwd_deg=4.0,
+        sleeve_end_rx=0.078,
+        sleeve_end_rz=0.068,
         elbow_bend=0.0,
         is_hoodie=False,
         thickness=0.0026,
@@ -586,30 +586,30 @@ def get_tshirt_spec() -> GarmentSpec:
 
 def get_hoodie_spec() -> GarmentSpec:
     return GarmentSpec(
-        hem_y=0.068,
+        hem_y=0.070,
         waist_y=0.23,
-        arm_bot_y=0.415,
+        arm_bot_y=0.425,
         chest_y=0.46,
-        arm_top_y=0.628,
-        neck_front_y=0.648,
-        neck_back_y=0.706,
-        neck_side_y=0.718,
-        rx_hem=0.278,
-        rx_waist=0.285,
-        rx_chest=0.298,
-        rx_shoulder=0.292,
-        rz_hem=0.144,
-        rz_waist=0.148,
-        rz_chest=0.156,
-        neck_rx=0.105,
-        neck_rz_front=0.095,
-        neck_rz_back=0.082,
-        sleeve_len=0.535,
-        sleeve_drop_deg=55.0,
-        sleeve_fwd_deg=9.0,
-        sleeve_end_rx=0.068,
-        sleeve_end_rz=0.064,
-        elbow_bend=0.022,
+        arm_top_y=0.625,
+        neck_front_y=0.642,
+        neck_back_y=0.704,
+        neck_side_y=0.714,
+        rx_hem=0.268,
+        rx_waist=0.278,
+        rx_chest=0.286,
+        rx_shoulder=0.268,
+        rz_hem=0.138,
+        rz_waist=0.144,
+        rz_chest=0.150,
+        neck_rx=0.100,
+        neck_rz_front=0.090,
+        neck_rz_back=0.078,
+        sleeve_len=0.515,
+        sleeve_drop_deg=70.5,
+        sleeve_fwd_deg=6.0,
+        sleeve_end_rx=0.066,
+        sleeve_end_rz=0.062,
+        elbow_bend=0.018,
         is_hoodie=True,
         thickness=0.0038,
     )
@@ -655,8 +655,8 @@ def build_tshirt() -> Tuple[List[SubMesh], Dict[str, MaterialDef]]:
 
 def build_hoodie_hood_pattern(spec: GarmentSpec) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[int], List[int]]:
     """
-    Build the open single-layer quad hood pattern plus neck-base and face-brim vertex lists
-    so Blender Cloth Physics can drape it naturally before Solidify.
+    Build the relaxed folded streetwear collar-hood pattern (matching the CHAM Hoodie
+    reference: wide cozy folded side wings, front crossover throat seam, low crown).
     """
     N_U = 33
     N_V = 18
@@ -672,34 +672,38 @@ def build_hoodie_hood_pattern(spec: GarmentSpec) -> Tuple[np.ndarray, np.ndarray
             abs_s = abs(s)
             sign_s = 1.0 if s >= 0 else -1.0
 
+            # Base ring around neck with front crossover V-throat overlap
             ang_neck = (1.0 - abs_s) * math.pi
-            x_neck = sign_s * (0.024 * (abs_s ** 2) + (spec.neck_rx + 0.008) * math.sin(ang_neck))
-            z_neck = 0.098 * math.cos(ang_neck)
+            x_neck = sign_s * ((spec.neck_rx + 0.012) * math.sin(ang_neck) - 0.018 * (abs_s ** 3))
+            z_neck = 0.095 * math.cos(ang_neck)
             if z_neck < 0:
-                z_neck *= (spec.neck_rz_back + 0.006) / 0.098
-            y_neck = (spec.neck_back_y - 0.014) + 0.016 * math.sin(ang_neck) - 0.042 * (abs_s ** 3.2)
+                z_neck *= (spec.neck_rz_back + 0.010) / 0.095
+            else:
+                # Slight left-over-right crossover offset at front throat
+                z_neck += (0.005 if s >= 0 else -0.002) * (abs_s ** 2)
+            y_neck = (spec.neck_back_y - 0.010) + 0.012 * math.sin(ang_neck) - 0.056 * (abs_s ** 2.6)
 
+            # Relaxed folded hood brim (wider side wings resting on shoulders, lower top crown)
             ang_face = abs_s * math.pi
-            x_face = sign_s * (0.112 * math.sin(ang_face * 0.92) + 0.024 * (abs_s ** 4))
-            y_face = 0.820 + 0.135 * math.cos(ang_face)
-            z_face = 0.108 + 0.008 * math.sin(ang_face)
+            x_face = sign_s * (0.146 * math.sin(ang_face * 0.88) + 0.014 * (abs_s ** 3))
+            y_face = 0.752 + 0.072 * math.cos(ang_face) - 0.018 * (abs_s ** 2)
+            z_face = 0.094 - 0.020 * math.cos(ang_face) + (0.008 if s >= 0 else 0.0) * (abs_s ** 2)
 
             back_dome = math.sin(v * math.pi) * math.cos(abs_s * math.pi * 0.5)
-            side_dome = math.sin(v * math.pi) * math.sin(abs_s * math.pi)
+            side_fold = math.sin(v * math.pi) * math.sin(abs_s * math.pi)
 
-            x = x_neck * (1.0 - v) + x_face * v + sign_s * 0.036 * side_dome
-            y = y_neck * (1.0 - v) + y_face * v + 0.055 * back_dome
-            z = z_neck * (1.0 - v) + z_face * v - 0.145 * back_dome
+            x = x_neck * (1.0 - v) + x_face * v + sign_s * 0.046 * side_fold
+            y = y_neck * (1.0 - v) + y_face * v + 0.032 * back_dome - 0.012 * side_fold
+            z = z_neck * (1.0 - v) + z_face * v - 0.135 * back_dome
 
-            z -= 0.009 * math.sin(v * math.pi * 2.5) * math.exp(-(abs_s ** 2) / 0.15) * (1.0 - v)
-            seam = 0.0025 * math.exp(-(abs_s ** 2) / 0.003) * math.sin(v * math.pi)
-            y += seam * 0.7
-            z -= seam * 0.7
+            # Horizontal double-layer hood fold crease
+            z -= 0.008 * math.sin(v * math.pi * 2.0) * (1.0 - 0.4 * abs_s)
+            y -= 0.006 * math.sin(v * math.pi * 2.0) * side_fold
 
-            if v > 0.88:
-                brim = (v - 0.88) / 0.12
-                z += 0.004 * brim
-                x += sign_s * 0.003 * math.sin(brim * math.pi) * math.sin(ang_face)
+            if v > 0.86:
+                brim = (v - 0.86) / 0.14
+                z += 0.005 * brim
+                y -= 0.004 * brim
 
             ring[i] = [x, y, z]
         rings.append(ring)
@@ -879,17 +883,13 @@ def build_hoodie() -> Tuple[List[SubMesh], Dict[str, MaterialDef]]:
 
     hood_mesh = build_hoodie_hood(spec)
     pocket_mesh = build_kangaroo_pocket(spec)
-    cords_l = build_drawstring_and_aglet(+1.0, spec)
-    cords_r = build_drawstring_and_aglet(-1.0, spec)
 
     materials = {
-        "hoodie_fleece": MaterialDef("hoodie_fleece", (0.09, 0.10, 0.12, 1.0), roughness=0.92),
-        "hoodie_rib": MaterialDef("hoodie_rib", (0.075, 0.085, 0.105, 1.0), roughness=0.94),
-        "hoodie_drawstring": MaterialDef("hoodie_drawstring", (0.86, 0.84, 0.80, 1.0), roughness=0.85),
-        "hoodie_metal": MaterialDef("hoodie_metal", (0.72, 0.73, 0.75, 1.0), roughness=0.32, metallic=0.88),
+        "hoodie_fleece": MaterialDef("hoodie_fleece", (0.16, 0.22, 0.18, 1.0), roughness=0.90),
+        "hoodie_rib": MaterialDef("hoodie_rib", (0.14, 0.19, 0.16, 1.0), roughness=0.92),
     }
 
-    parts = [body_mesh, waistband, cuff_l_mesh, cuff_r_mesh, hood_mesh, pocket_mesh] + cords_l + cords_r
+    parts = [body_mesh, waistband, cuff_l_mesh, cuff_r_mesh, hood_mesh, pocket_mesh]
     return parts, materials
 
 
